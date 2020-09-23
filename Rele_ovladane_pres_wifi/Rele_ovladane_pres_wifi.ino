@@ -1,25 +1,36 @@
 // HTTP server co bezi na svabu za dolar
+
+// include pouzitych knihoven
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
-#include <Adafruit_NeoPixel.h>
+#include <WEMOS_SHT3X.h>    // teplomer neni implementovany
+
 
 // definice pinu
-#define PIN_RELAY           D1
+#define PIN_RELAY_1         D8
+#define PIN_RELAY_2         D7
+#define PIN_RELAY_3         D6
 #define PIN_LED             D2
 #define PIN_BUTTON          D3
-#define LED_INDEX           0
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
+
 
 //192.168.2.xxx port 80
 ESP8266WebServer server(80);
 
-//RGB LED knihovna
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, PIN_LED, NEO_GRB + NEO_KHZ800);
 
-// dalsi promene
-boolean isRelayOn = false;
+//knihovna na teplomer
+SHT3X sht30(0x45);
+
+
+// stavove promene relatek a tlacitka
+boolean isButtonOn  = false;
+boolean isRelay1On = false;
+boolean isRelay2On = false;
+boolean isRelay3On = false;
+
+// stavy tlacitka
 int buttonState1 = LOW;
 int buttonState2 = LOW;
 
@@ -30,9 +41,14 @@ void setup(void) {
 
   // nastaveni LED aby se sni dalo blikat
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(PIN_RELAY, OUTPUT);
+  pinMode(PIN_RELAY_1, OUTPUT);
+  pinMode(PIN_RELAY_2, OUTPUT);
+  pinMode(PIN_RELAY_3, OUTPUT);
   pinMode(PIN_BUTTON, INPUT);
   digitalWrite(LED_BUILTIN, HIGH);
+
+  // nastavi vsechny rele do vychoziho stavu == vypnuto
+  switchAllRelays();
 
   // nastaveni wifi modu, jmena site a hesla
   WiFi.mode(WIFI_STA);
@@ -55,48 +71,59 @@ void setup(void) {
   server.on("/vypni", handleTurnOff);
   server.on("/zapni", handleTurnOn);
   server.on("/relay", handleRelay);
-  server.on("/rgb", handleRGB);
   server.on("/", handleRoot);
   server.onNotFound(handleNotFound);
 
   // zapiname http server
   server.begin();
   Serial.println("HTTP server started");
-
-  // zapiname RGB LED knihovnu
-  pixels.begin();
 }
 
 
 void loop(void) {
   server.handleClient();
+  handleButton();
 
+  // pauza 100ms
+  delay(100);
+}
 
+boolean isRelayOn(int outputPin, String relayId) {
+  boolean relayOn = false;
+
+  // tlacitko zmenilo svuj stav ;
+  if (isButtonOn == HIGH) {
+    relayOn = false;
+    Serial.println(String("vypni rele ") + relayId);
+  } else {
+    relayOn = true;
+    Serial.println(String("zapni rele ") + relayId);
+  }
+
+  // zapis hodnotu do rele
+  digitalWrite(outputPin , relayOn ? HIGH : LOW);
+
+  return relayOn;
+}
+
+void handleButton() {
   // nacti novou hodnotu pro tento loop
   buttonState2 = digitalRead(PIN_BUTTON);
 
   if (buttonState1 == LOW && buttonState2 == HIGH) {
 
-    // tlacitko zmenilo svuj stav ;
-    if (digitalRead(PIN_RELAY) == HIGH) {
-      isRelayOn = LOW ;
+    isRelay1On = isRelayOn(PIN_RELAY_1, "1");
+    // uncomment this code if you want to controll all relays by buttons
+//    isRelay2On = isRelayOn(PIN_RELAY_2, "2");
+//    isRelay3On = isRelayOn(PIN_RELAY_3, "3");
 
-      Serial.println("vypni rele");
-    } else {
-      isRelayOn = HIGH;
-
-      Serial.println("zapni rele");
-    }
-
-    // zapis hodnotu do rele
-    digitalWrite(PIN_RELAY , isRelayOn);
+    isButtonOn = !isButtonOn;
+    digitalWrite(LED_BUILTIN, isButtonOn ?  LOW : HIGH);
   }
 
   // uloz starou hodnotu na dalsi loop
   buttonState1 = buttonState2;
 
-  // pauza 100ms
-  delay(100);
 }
 
 
@@ -108,10 +135,9 @@ void handleRoot() {
   String body = String("<h1>HTTP server funguje!</h1><br>Muzete volat nasledujici <b>endpointy:</b>");
   String zapni = textToAhref("/zapni");
   String vypni = textToAhref("/vypni");
-  String relay = textToAhref("/relay");
-  String rgb = textToAhref("/rgb?r=0&g=0&b=0");
+  String relay = textToAhref("/relay?relayNumber=1&isOn=false");
   String dalsi = String("</p> <p>");
-  String rootContent = String("<html><head><title>") + webTitle + String("</title></head><body>") + body + String(" <p>") + zapni + dalsi + vypni + dalsi + relay + dalsi + rgb + String("</p> </body></html>");
+  String rootContent = String("<html><head><title>") + webTitle + String("</title></head><body>") + body + String(" <p>") + zapni + dalsi + vypni + dalsi + relay + String("</p> </body></html>");
 
   server.send(httpRequestCode, "text/html", rootContent);
 }
@@ -121,10 +147,19 @@ void handleTurnOn() {
   Serial.println("");
   Serial.println("nekdo zapnul LED");
   int httpRequestCode = 200; // OK
-  isRelayOn = HIGH;
-  digitalWrite(PIN_RELAY, isRelayOn);
+  isRelay1On = HIGH;
+  isRelay2On = HIGH;
+  isRelay3On = HIGH;
+  isButtonOn = true;
+  switchAllRelays();
   digitalWrite(LED_BUILTIN, LOW);
   server.send(httpRequestCode, "text/plain", "prave si aktivoval LED pres wifi pomoci prohlizece !!!!");
+}
+
+void switchAllRelays() {
+  digitalWrite(PIN_RELAY_1, isRelay1On);
+  digitalWrite(PIN_RELAY_2, isRelay2On);
+  digitalWrite(PIN_RELAY_3, isRelay3On);
 }
 
 
@@ -132,11 +167,12 @@ void handleTurnOff() {
   Serial.println("");
   Serial.println("nekdo vypnul LED");
   int httpRequestCode = 200; // OK
-  isRelayOn = LOW;
+  isRelay1On = LOW;
+  isRelay2On = LOW;
+  isRelay3On = LOW;
+  isButtonOn = false;
+  switchAllRelays();
   digitalWrite(LED_BUILTIN, HIGH);
-  digitalWrite(PIN_RELAY, isRelayOn);
-  pixels.setPixelColor(LED_INDEX, pixels.Color(0, 0, 0));
-  pixels.show();
   server.send(httpRequestCode, "text/plain", "prave si deaktivoval LED pres wifi pomoci prohlizece");
 }
 
@@ -147,6 +183,8 @@ void handleRelay() {
 
   int httpRequestCode = 200; // OK
   int relayNumber = 0;
+
+  boolean isRelayOn = false;
 
   for (int i = 0; i < server.args(); i = i + 1) {
     String argumentName = String(server.argName(i));
@@ -163,45 +201,32 @@ void handleRelay() {
     }
   }
 
-  digitalWrite(PIN_RELAY, isRelayOn ? HIGH : LOW);
-  digitalWrite(LED_BUILTIN, isRelayOn ? LOW : HIGH);
+  switch (relayNumber) {
+    case 1:
+      isRelay1On = isRelayOn;
+      digitalWrite(PIN_RELAY_1, isRelayOn);
+      break;
+    case 2:
+      isRelay2On = isRelayOn;
+      digitalWrite(PIN_RELAY_2, isRelayOn);
+      break;
+    case 3:
+      isRelay3On = isRelayOn;
+      digitalWrite(PIN_RELAY_3, isRelayOn);
+      break;
+  }
+
+  if (isRelay1On || isRelay2On || isRelay3On) {
+    isButtonOn = true;
+  } else {
+    isButtonOn = false;
+  }
+
+  digitalWrite(LED_BUILTIN, isButtonOn ? LOW : HIGH);
   String rele = "prave si rele cislo: " + String(relayNumber);
   String stav = isRelayOn ? " zapnuto" : " vypnuto";
   String zprava =  rele + stav;
   server.send(httpRequestCode, "text/plain", zprava);
-}
-
-
-void handleRGB() {
-  Serial.println("");
-  Serial.println("nekdo aktivoval RGB LED");
-
-  int httpRequestCode = 200; // OK
-  int r = 0;
-  int g = 0;
-  int b = 0;
-  for (int i = 0; i < server.args(); i = i + 1) {
-    String argumentName = String(server.argName(i));
-    String argumentValue = String(server.arg(i));
-    Serial.print(String(i) + " ");  //print id
-    Serial.print("\"" + argumentName + "\" ");  //print name
-    Serial.println("\"" + argumentValue + "\"");  //print value
-
-    if (argumentName == "r") {
-      r = server.arg(i).toInt();
-    }
-
-    if (argumentName == "g") {
-      g = server.arg(i).toInt();
-    }
-
-    if (argumentName == "b") {
-      b = server.arg(i).toInt();
-    }
-  }
-  pixels.setPixelColor(LED_INDEX, pixels.Color(r, g, b));
-  pixels.show();
-  server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 }
 
 
@@ -223,8 +248,9 @@ void handleNotFound() {
 
 
 String textToAhref(String text) {
-  String ahref = String("<a href=\"") + text + String("\">") + ip2Str(WiFi.localIP()) + text + String("</a>");
-  Serial.println(ahref);
+  String endpointText = ip2Str(WiFi.localIP()) + text;
+  String ahref = String("<a href=\"") + text + String("\">") + endpointText + String("</a>");
+  Serial.println(String("Endpoint: ") + endpointText);
   return ahref;
 }
 
