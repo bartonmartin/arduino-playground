@@ -1,7 +1,6 @@
 // HTTP server co bezi na svabu za dolar
 
 // include pouzitych knihoven
-#include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WEMOS_SHT3X.h>    // teplomer neni implementovany
 
