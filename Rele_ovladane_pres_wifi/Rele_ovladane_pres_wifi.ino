@@ -105,7 +105,10 @@ boolean isRelayOn(int outputPin, String relayId) {
   return relayOn;
 }
 
+
 void handleButton() {
+  logEndpointMessage("button press");
+
   // nacti novou hodnotu pro tento loop
   buttonState2 = digitalRead(PIN_BUTTON);
 
@@ -113,8 +116,8 @@ void handleButton() {
 
     isRelay1On = isRelayOn(PIN_RELAY_1, "1");
     // uncomment this code if you want to controll all relays by buttons
-//    isRelay2On = isRelayOn(PIN_RELAY_2, "2");
-//    isRelay3On = isRelayOn(PIN_RELAY_3, "3");
+    //    isRelay2On = isRelayOn(PIN_RELAY_2, "2");
+    //    isRelay3On = isRelayOn(PIN_RELAY_3, "3");
 
     isButtonOn = !isButtonOn;
     digitalWrite(LED_BUILTIN, isButtonOn ?  LOW : HIGH);
@@ -143,8 +146,8 @@ void handleRoot() {
 
 
 void handleTurnOn() {
-  Serial.println("");
-  Serial.println("nekdo zapnul LED");
+  logEndpointMessage("/zapni");
+
   int httpRequestCode = 200; // OK
   isRelay1On = HIGH;
   isRelay2On = HIGH;
@@ -155,16 +158,10 @@ void handleTurnOn() {
   server.send(httpRequestCode, "text/plain", "prave si aktivoval LED pres wifi pomoci prohlizece !!!!");
 }
 
-void switchAllRelays() {
-  digitalWrite(PIN_RELAY_1, isRelay1On);
-  digitalWrite(PIN_RELAY_2, isRelay2On);
-  digitalWrite(PIN_RELAY_3, isRelay3On);
-}
-
 
 void handleTurnOff() {
-  Serial.println("");
-  Serial.println("nekdo vypnul LED");
+  logEndpointMessage("/vypni");
+
   int httpRequestCode = 200; // OK
   isRelay1On = LOW;
   isRelay2On = LOW;
@@ -177,8 +174,7 @@ void handleTurnOff() {
 
 
 void handleRelay() {
-  Serial.println("");
-  Serial.println("nekdo aktivoval rele");
+  logEndpointMessage("/rselay");
 
   int httpRequestCode = 200; // OK
   int relayNumber = 0;
@@ -230,6 +226,8 @@ void handleRelay() {
 
 
 void handleNotFound() {
+  logEndpointMessage("404 - " + server.uri());
+
   int httpRequestCode = 404; // ERROR
   String message = "File Not Found\n\n";
   message += "URI: ";
@@ -243,6 +241,24 @@ void handleNotFound() {
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
   server.send(httpRequestCode, "text/plain", message);
+}
+
+
+void switchAllRelays() {
+  digitalWrite(PIN_RELAY_1, isRelay1On);
+  digitalWrite(PIN_RELAY_2, isRelay2On);
+  digitalWrite(PIN_RELAY_3, isRelay3On);
+}
+
+
+void logEndpointMessage(String enpointName) {
+  Serial.println("---------------------------");
+  Serial.println(getClientIp() + " vola " + enpointName);
+}
+
+
+String getClientIp() {
+  return server.client().remoteIP().toString();
 }
 
 
