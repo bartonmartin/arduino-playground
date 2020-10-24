@@ -2,6 +2,9 @@
 
 // include pouzitych knihoven
 #include <ESP8266WebServer.h>
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
 
 
 // definice pinu
@@ -25,6 +28,7 @@
 
 //192.168.2.xxx port 80
 ESP8266WebServer server(80);
+ESP8266WiFiMulti wiFiMulti;
 
 
 // stavove promene relatek a tlacitka
@@ -67,6 +71,7 @@ void setup(void) {
   // wifi settings
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wiFiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
   Serial.println("");
 
   // waiting for connection
@@ -85,6 +90,7 @@ void setup(void) {
   server.on("/switchOff", handleTurnOff);
   server.on("/switchOn", handleTurnOn);
   server.on("/light", handleRelay);
+  server.on("/rgb", handleRgb);
   server.on("/", handleRoot);
   server.onNotFound(handleNotFound);
 
@@ -143,7 +149,8 @@ void handleRoot() {
 
   String endpoints = textToAhref("/switchOn") + paragraph
                      + textToAhref("/switchOff") + paragraph
-                     + textToAhref("/light?number=1&isOn=true");
+                     + textToAhref("/light?number=1&isOn=true") + paragraph
+                     + String("<i>Try <b>alpha feature: </b></i>") + textToAhref("/rgb?r=1&g=0&b=0") + paragraph;
 
   String relaysState = relayState(ID_RELAY_1, boolToString(!isRelay1On)) + paragraph
                        + relayState(ID_RELAY_2, boolToString(isRelay2On)) + paragraph
@@ -162,12 +169,100 @@ void handleRoot() {
                 + buttons + paragraph + lineBreak
                 + String("Or you call any <b>endpoint</b> via browser or an app:") + paragraph + lineBreak
                 + endpoints + paragraph + lineBreak
-                + String("Just for debugging purposes, here is <b>status of all lights:</b>") + paragraph + lineBreak
+                + paragraph + lineBreak
+                + paragraph + lineBreak
+                + String("<i>Just for debugging purposes, here is <b>status of all lights:</b>") + paragraph + lineBreak
                 + relaysState + paragraph + lineBreak
-                + String("</body>");
+                + String("</i></body>");
   String rootContent = String("<html>") + head + body + String("</html>");
 
   server.send(httpRequestCode, "text/html", rootContent);
+}
+
+
+void sendHttpRequest(int r = 0, int g = 0, int b = 0) {
+  if ((wiFiMulti.run() == WL_CONNECTED)) {
+
+    WiFiClient client;
+
+    HTTPClient http;
+    String url = String("http://192.168.2.243/rgb?r=") + r + String("&g=") + g + String("&b=") + b;
+
+    Serial.print("[HTTP] begin...\n");
+    if (http.begin(client, url)) {  // HTTP
+
+      Serial.print("[HTTP] GET...\n");
+      // start connection and send HTTP header
+      int httpCode = http.GET();
+
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          String payload = http.getString();
+          Serial.println(payload);
+        }
+      } else {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+      }
+
+      http.end();
+    } else {
+      Serial.printf("[HTTP} Unable to connect\n");
+    }
+  }
+}
+
+
+void handleRgb() {
+  Serial.println("");
+  Serial.println("someone is calling rgb");
+
+  int httpRequestCode = 200; // OK
+
+  int r = 0;
+  int g = 0;
+  int b = 0;
+  for (int i = 0; i < server.args(); i = i + 1) {
+    String argumentName = String(server.argName(i));
+    String argumentValue = String(server.arg(i));
+    Serial.print(String(i) + " ");  //print id
+    Serial.print("\"" + argumentName + "\" ");  //print name
+    Serial.println("\"" + argumentValue + "\"");  //print value
+
+    if (argumentName == "r") {
+      r = server.arg(i).toInt();
+    }
+
+    if (argumentName == "g") {
+      g = server.arg(i).toInt();
+    }
+
+    if (argumentName == "b") {
+      b = server.arg(i).toInt();
+    }
+  }
+
+  sendHttpRequest(r, g, b);
+
+  String paragraph = String("<p>");
+  String lineBreak = String("<br>");
+
+  String style = String("<style>body {background-color: black;color: white;}</style>");
+  String title = String("<title>ESP8266 Light server</title>");
+  String head = String("<head>") + style + title + String("</head>");
+  String body = String("<body>")
+                + String("<h1>HTTP client also works!</h1>") + paragraph
+                + lineBreak
+                + String("You have just activated LED RGB strip connected to <b>ANOTHER Arduino</b> over the local network :)") + paragraph
+                + lineBreak
+                + String("</body>");
+  String rgbContent = String("<html>") + head + body + String("</html>");
+
+  server.send(httpRequestCode, "text/html", rgbContent);
 }
 
 
