@@ -101,7 +101,6 @@ void loop(void) {
   handleButton();
 
   // pauza 100ms
-  delay(100);
 }
 
 void switchRelay(int outputPin, String relayId) {
@@ -117,14 +116,14 @@ void switchRelay(int outputPin, String relayId) {
   }
 
   if (outputPin == PIN_RELAY_1) {
-      isRelay1On = relayOn;
-    }
-    if (outputPin == PIN_RELAY_2) {
-      isRelay2On = relayOn;
-    }
-    if (outputPin == PIN_RELAY_3) {
-      isRelay3On = relayOn;
-    }
+    isRelay1On = relayOn;
+  }
+  if (outputPin == PIN_RELAY_2) {
+    isRelay2On = relayOn;
+  }
+  if (outputPin == PIN_RELAY_3) {
+    isRelay3On = relayOn;
+  }
 
   // zapis hodnotu do rele
   digitalWrite(outputPin , relayOn ? HIGH : LOW);
@@ -158,9 +157,15 @@ void handleRoot() {
   String vypni = textToAhref("/vypni");
   String relay = textToAhref("/relay?relayNumber=1&isOn=true");
   String dalsi = String("</p> <p>");
-  String rootContent = String("<html><head><style>body {background-color: black;color: white;}</style><title>") + webTitle + String("</title></head><body>") + body + String(" <p>") + zapni + dalsi + vypni + dalsi + relay + String("</p> </body></html>");
+  String ukazatelCoJeZaple = String(String("<p>") + ID_RELAY_1 + String(":") + boolToString(!isRelay1On) + String("<p>") + ID_RELAY_2 + String(":") + boolToString(isRelay2On) + String("<p>") + ID_RELAY_3 + String(":") + boolToString(isRelay3On) + String("<p>"));
+  String rootContent = String("<html><head><style>body {background-color: black;color: white;}</style><title>") + webTitle + String("</title></head><body>") + body + String(" <p>") + zapni + dalsi + vypni + dalsi + relay + ukazatelCoJeZaple + String("</p> </body></html>");
 
   server.send(httpRequestCode, "text/html", rootContent);
+}
+
+String boolToString(bool b)
+{
+  return b ? "true" : "false";
 }
 
 
