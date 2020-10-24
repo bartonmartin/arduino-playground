@@ -11,6 +11,15 @@
 #define PIN_RELAY_3         D6
 #define PIN_LED             D2
 #define PIN_BUTTON          D3
+
+
+// definice ID pro kazde rele
+#define ID_RELAY_1          "1"
+#define ID_RELAY_2          "2"
+#define ID_RELAY_3          "3"
+
+
+// nastaveni wifi site
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
 
@@ -29,9 +38,15 @@ boolean isRelay1On = false;
 boolean isRelay2On = false;
 boolean isRelay3On = false;
 
+
 // stavy tlacitka
 int buttonState1 = LOW;
 int buttonState2 = LOW;
+
+
+// prepinani rele na tlacitku
+int selectedRelayPin = PIN_RELAY_1;
+String selectedRelayId = "1";
 
 
 void setup(void) {
@@ -76,6 +91,8 @@ void setup(void) {
   // zapiname http server
   server.begin();
   Serial.println("HTTP server started");
+
+  wifi_fpm_auto_sleep_set_in_null_mode(NULL_MODE);
 }
 
 
@@ -87,7 +104,7 @@ void loop(void) {
   delay(100);
 }
 
-boolean isRelayOn(int outputPin, String relayId) {
+void switchRelay(int outputPin, String relayId) {
   boolean relayOn = false;
 
   // tlacitko zmenilo svuj stav ;
@@ -99,10 +116,18 @@ boolean isRelayOn(int outputPin, String relayId) {
     Serial.println(String("zapni rele ") + relayId);
   }
 
+  if (outputPin == PIN_RELAY_1) {
+      isRelay1On = relayOn;
+    }
+    if (outputPin == PIN_RELAY_2) {
+      isRelay2On = relayOn;
+    }
+    if (outputPin == PIN_RELAY_3) {
+      isRelay3On = relayOn;
+    }
+
   // zapis hodnotu do rele
   digitalWrite(outputPin , relayOn ? HIGH : LOW);
-
-  return relayOn;
 }
 
 
@@ -113,19 +138,13 @@ void handleButton() {
   buttonState2 = digitalRead(PIN_BUTTON);
 
   if (buttonState1 == LOW && buttonState2 == HIGH) {
-
-    isRelay1On = isRelayOn(PIN_RELAY_1, "1");
-    // uncomment this code if you want to controll all relays by buttons
-    //    isRelay2On = isRelayOn(PIN_RELAY_2, "2");
-    //    isRelay3On = isRelayOn(PIN_RELAY_3, "3");
-
+    switchRelay(selectedRelayPin, ID_RELAY_1);
     isButtonOn = !isButtonOn;
     digitalWrite(LED_BUILTIN, isButtonOn ?  LOW : HIGH);
   }
 
   // uloz starou hodnotu na dalsi loop
   buttonState1 = buttonState2;
-
 }
 
 
@@ -137,9 +156,9 @@ void handleRoot() {
   String body = String("<h1>HTTP server funguje!</h1><br>Muzete volat nasledujici <b>endpointy:</b>");
   String zapni = textToAhref("/zapni");
   String vypni = textToAhref("/vypni");
-  String relay = textToAhref("/relay?relayNumber=1&isOn=false");
+  String relay = textToAhref("/relay?relayNumber=1&isOn=true");
   String dalsi = String("</p> <p>");
-  String rootContent = String("<html><head><title>") + webTitle + String("</title></head><body>") + body + String(" <p>") + zapni + dalsi + vypni + dalsi + relay + String("</p> </body></html>");
+  String rootContent = String("<html><head><style>body {background-color: black;color: white;}</style><title>") + webTitle + String("</title></head><body>") + body + String(" <p>") + zapni + dalsi + vypni + dalsi + relay + String("</p> </body></html>");
 
   server.send(httpRequestCode, "text/html", rootContent);
 }
@@ -155,7 +174,8 @@ void handleTurnOn() {
   isButtonOn = true;
   switchAllRelays();
   digitalWrite(LED_BUILTIN, LOW);
-  server.send(httpRequestCode, "text/plain", "prave si aktivoval LED pres wifi pomoci prohlizece !!!!");
+  //server.send(httpRequestCode, "text/plain", "prave si aktivoval vsechny rele pres wifi pomoci prohlizece !!!!");
+  handleRoot();
 }
 
 
@@ -169,7 +189,8 @@ void handleTurnOff() {
   isButtonOn = false;
   switchAllRelays();
   digitalWrite(LED_BUILTIN, HIGH);
-  server.send(httpRequestCode, "text/plain", "prave si deaktivoval LED pres wifi pomoci prohlizece");
+  //server.send(httpRequestCode, "text/plain", "prave si deaktivoval vsechny rele pres wifi pomoci prohlizece");
+  handleRoot();
 }
 
 
@@ -218,10 +239,11 @@ void handleRelay() {
   }
 
   digitalWrite(LED_BUILTIN, isButtonOn ? LOW : HIGH);
-  String rele = "prave si rele cislo: " + String(relayNumber);
+  String rele = "rele cislo: " + String(relayNumber);
   String stav = isRelayOn ? " zapnuto" : " vypnuto";
   String zprava =  rele + stav;
-  server.send(httpRequestCode, "text/plain", zprava);
+  //server.send(httpRequestCode, "text/plain", zprava);
+  handleRoot();
 }
 
 
@@ -264,7 +286,7 @@ String getClientIp() {
 
 String textToAhref(String text) {
   String endpointText = ip2Str(WiFi.localIP()) + text;
-  String ahref = String("<a href=\"") + text + String("\">") + endpointText + String("</a>");
+  String ahref = String("<a href=\"") + text + String("\"><button>") + endpointText + String("</button></a>");
   Serial.println(String("Endpoint: ") + endpointText);
   return ahref;
 }
