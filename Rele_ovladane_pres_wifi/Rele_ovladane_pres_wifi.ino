@@ -2,7 +2,6 @@
 
 // include pouzitych knihoven
 #include <ESP8266WebServer.h>
-#include <WEMOS_SHT3X.h>    // teplomer neni implementovany
 
 
 // definice pinu
@@ -28,10 +27,6 @@
 ESP8266WebServer server(80);
 
 
-//knihovna na teplomer
-SHT3X sht30(0x45);
-
-
 // stavove promene relatek a tlacitka
 boolean isButtonOn  = false;
 boolean isRelay1On = false;
@@ -54,12 +49,10 @@ void setup(void) {
   Serial.begin(115200);
 
   // nastaveni LED aby se sni dalo blikat
-  pinMode(LED_BUILTIN, OUTPUT);
   pinMode(PIN_RELAY_1, OUTPUT);
   pinMode(PIN_RELAY_2, OUTPUT);
   pinMode(PIN_RELAY_3, OUTPUT);
   pinMode(PIN_BUTTON, INPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
 
   // nastavi vsechny rele do vychoziho stavu == vypnuto
   switchAllRelays();
@@ -139,7 +132,6 @@ void handleButton() {
   if (buttonState1 == LOW && buttonState2 == HIGH) {
     switchRelay(selectedRelayPin, ID_RELAY_1);
     isButtonOn = !isButtonOn;
-    digitalWrite(LED_BUILTIN, isButtonOn ?  LOW : HIGH);
   }
 
   // uloz starou hodnotu na dalsi loop
@@ -178,7 +170,6 @@ void handleTurnOn() {
   isRelay3On = HIGH;
   isButtonOn = true;
   switchAllRelays();
-  digitalWrite(LED_BUILTIN, LOW);
   //server.send(httpRequestCode, "text/plain", "prave si aktivoval vsechny rele pres wifi pomoci prohlizece !!!!");
   handleRoot();
 }
@@ -193,7 +184,6 @@ void handleTurnOff() {
   isRelay3On = LOW;
   isButtonOn = false;
   switchAllRelays();
-  digitalWrite(LED_BUILTIN, HIGH);
   //server.send(httpRequestCode, "text/plain", "prave si deaktivoval vsechny rele pres wifi pomoci prohlizece");
   handleRoot();
 }
@@ -243,7 +233,6 @@ void handleRelay() {
     isButtonOn = false;
   }
 
-  digitalWrite(LED_BUILTIN, isButtonOn ? LOW : HIGH);
   String rele = "rele cislo: " + String(relayNumber);
   String stav = isRelayOn ? " zapnuto" : " vypnuto";
   String zprava =  rele + stav;
