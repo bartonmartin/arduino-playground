@@ -9,15 +9,18 @@
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
 
+int leds = 60;
+
 //192.168.2.xxx port 80
 ESP8266WebServer server(80);
 
 //RGB LED knihovna
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, PIN_LED, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(leds, PIN_LED, NEO_GRB + NEO_KHZ800);
 
 // dalsi promene
 int buttonState1 = LOW;
 int buttonState2 = LOW;
+
 
 
 void setup(void) {
@@ -143,8 +146,13 @@ void handleRGB() {
       b = server.arg(i).toInt();
     }
   }
-  pixels.setPixelColor(LED_INDEX, pixels.Color(r, g, b));
-  pixels.show();
+
+  for (int i = 0; i < leds; i++) {
+    pixels.setPixelColor(i, pixels.Color(r, g, b));
+    pixels.show();
+    delay(10);
+  }
+
   server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 }
 
