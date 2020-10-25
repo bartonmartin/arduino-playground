@@ -21,6 +21,10 @@ Adafruit_NeoPixel pixels = Adafruit_NeoPixel(leds, PIN_LED, NEO_GRB + NEO_KHZ800
 int buttonState1 = LOW;
 int buttonState2 = LOW;
 
+int r = 0;
+int g = 0;
+int b = 0;
+
 
 
 void setup(void) {
@@ -52,8 +56,7 @@ void setup(void) {
   server.on("/", handleRoot);
   server.on("/vypni", handleTurnOff);
   server.on("/zapni", handleTurnOn);
-  server.on("/rgb", handleRGB);
-  server.on("/", handleRoot);
+  server.on("/rgb", handleRgb);
   server.onNotFound(handleNotFound);
 
   // zapiname http server
@@ -84,19 +87,106 @@ void loop(void) {
 }
 
 
+int checkValue(int value) {
+  if (value > 255) {
+    return 0;
+  }
+  if (value < 0) {
+    return 0;
+  }
+  return value;
+}
+
+
+String getButton(String color, String function) {
+  String text = "";
+  String url = "";
+  int value = 0;
+
+  if (function == String("+")) {
+    if (color == String("R")) {
+      value = checkValue(r + 1);
+      url = getUrl(value, g, b);
+    } else if (color == String("G")) {
+      value = checkValue(g + 1);
+      url = getUrl(r, value, b);
+    } else if (color == String("B")) {
+      value = checkValue(b + 1);
+      url = getUrl(r, g, value);
+    }
+
+    text = String(color) + String(" +1");
+  } else {
+    if (color == "R") {
+      value = checkValue(r - 1);
+      url = getUrl(value, g, b);
+    } else if (color == String("G")) {
+      value = checkValue(g - 1);
+      url = getUrl(r, value, b);
+    } else if (color == String("B")) {
+      value = checkValue(b - 1);
+      url = getUrl(r, g, value);
+    }
+
+    text = String(color) + String(" -1");
+  }
+
+  return textToButton(text, url);
+}
+
+
+String getUrl(int red, int green, int  blue) {
+  return String("http://192.168.2.243/rgb?r=") + red + String("&g=") + green + String("&b=") + blue;
+}
+
+
 void handleRoot() {
-  logEndpointMessage("/root");
+  Serial.println("");
+  Serial.println("someone is calling root");
 
   int httpRequestCode = 200; // OK
-  String webTitle = String("Muj ESP8266 web server");
-  String body = String("<h1>HTTP server funguje!</h1><br>Muzete volat nasledujici <b>endpointy:</b>");
-  String zapni = textToAhref("/zapni");
-  String vypni = textToAhref("/vypni");
-  String rgb = textToAhref("/rgb?r=0&g=0&b=0");
-  String dalsi = String("</p> <p>");
-  String rootContent = String("<html><head><title>") + webTitle + String("</title></head><body>") + body + String(" <p>") + zapni + dalsi + vypni + dalsi + rgb + String("</p> </body></html>");
+
+  String paragraph = String("<p>");
+  String lineBreak = String("<br>");
+  String buttons = getButton(String("R"), String("+")) + String(" ")
+                   + getButton(String("R"), String("-")) + paragraph
+                   + getButton(String("G"), String("+")) + String(" ")
+                   + getButton(String("G"), String("-")) + paragraph
+                   + getButton(String("B"), String("+")) + String(" ")
+                   + getButton(String("B"), String("-")) + paragraph;
+
+  String endpoints = textToAhref("/zapni") + paragraph
+                     + textToAhref("/vypni") + paragraph
+                     + textToAhref("/rgb?r=1&g=0&b=0") + paragraph;
+
+  String style = String("<style>body {background-color: black;color: white;}</style>");
+
+  String rgbTextStyle = String("<p style =\"background-color:rgb(") + rgbValue(r) + String(",") + rgbValue(g) + String(",") + rgbValue(b) + String(")\">");
+
+  String title = String("<title>ESP8266 RGB server</title>");
+  String head = String("<head>") + style + title + String("</head>");
+  String body = String("<body>")
+                + String("<h1>") + String("RGB \(") + r  + String(",") + g + String(",") + b + String("\)") + String(" POWER</h1>") + paragraph
+                + lineBreak
+                + rgbTextStyle + String("This is a super simple website, running on an ESP8266 based micro controller :)</p>") + paragraph
+                + rgbTextStyle + String("You can change color of WS2812B LED strip with 60 diodes !</p>") + paragraph
+                + lineBreak
+                + String("<h3>Tap on buttons right here:</h3>") + paragraph + lineBreak
+                + buttons + paragraph + lineBreak
+                + String("Or you call any <b>endpoint</b> via browser or an app:") + paragraph + lineBreak
+                + endpoints + paragraph + lineBreak
+                + paragraph + lineBreak
+                + String("</i></body>");
+  String rootContent = String("<html>") + head + body + String("</html>");
 
   server.send(httpRequestCode, "text/html", rootContent);
+}
+
+
+String rgbValue(int value) {
+  if (value != 0 && value < 100) {
+    return String("") + (value + 100);
+  }
 }
 
 
@@ -105,7 +195,18 @@ void handleTurnOn() {
 
   int httpRequestCode = 200; // OK
   digitalWrite(LED_BUILTIN, LOW);
-  server.send(httpRequestCode, "text/plain", "prave si aktivoval LED pres wifi pomoci prohlizece !!!!");
+
+  r = 5;
+  g = 5;
+  b = 5;
+
+  for (int i = 0; i < leds; i++) {
+    pixels.setPixelColor(i, pixels.Color(r, g, b));
+    pixels.show();
+    delay(10);
+  }
+  //  server.send(httpRequestCode, "text/plain", "prave si aktivoval LED pres wifi pomoci prohlizece !!!!");
+  handleRoot();
 }
 
 
@@ -114,19 +215,26 @@ void handleTurnOff() {
 
   int httpRequestCode = 200; // OK
   digitalWrite(LED_BUILTIN, HIGH);
-  pixels.setPixelColor(LED_INDEX, pixels.Color(0, 0, 0));
-  pixels.show();
-  server.send(httpRequestCode, "text/plain", "prave si deaktivoval LED pres wifi pomoci prohlizece");
+
+  r = 0;
+  g = 0;
+  b = 0;
+
+  for (int i = 0; i < leds; i++) {
+    pixels.setPixelColor(i, pixels.Color(r, g, b));
+    pixels.show();
+    delay(10);
+  }
+  //  server.send(httpRequestCode, "text/plain", "prave si deaktivoval LED pres wifi pomoci prohlizece");
+  handleRoot();
 }
 
 
-void handleRGB() {
+void handleRgb() {
   logEndpointMessage("/rgb");
 
   int httpRequestCode = 200; // OK
-  int r = 0;
-  int g = 0;
-  int b = 0;
+
   for (int i = 0; i < server.args(); i = i + 1) {
     String argumentName = String(server.argName(i));
     String argumentValue = String(server.arg(i));
@@ -135,15 +243,15 @@ void handleRGB() {
     Serial.println("\"" + argumentValue + "\"");  //print value
 
     if (argumentName == "r") {
-      r = server.arg(i).toInt();
+      r = checkValue(server.arg(i).toInt());
     }
 
     if (argumentName == "g") {
-      g = server.arg(i).toInt();
+      g = checkValue(server.arg(i).toInt());
     }
 
     if (argumentName == "b") {
-      b = server.arg(i).toInt();
+      b = checkValue(server.arg(i).toInt());
     }
   }
 
@@ -153,7 +261,44 @@ void handleRGB() {
     delay(10);
   }
 
-  server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+  //server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+  handleRoot();
+}
+
+
+void handleRgbLocal() {
+  logEndpointMessage("/rgb");
+
+  int httpRequestCode = 200; // OK
+
+  for (int i = 0; i < server.args(); i = i + 1) {
+    String argumentName = String(server.argName(i));
+    String argumentValue = String(server.arg(i));
+    Serial.print(String(i) + " ");  //print id
+    Serial.print("\"" + argumentName + "\" ");  //print name
+    Serial.println("\"" + argumentValue + "\"");  //print value
+
+    if (argumentName == "r") {
+      r = checkValue(server.arg(i).toInt());
+    }
+
+    if (argumentName == "g") {
+      g = checkValue(server.arg(i).toInt());
+    }
+
+    if (argumentName == "b") {
+      b = checkValue(server.arg(i).toInt());
+    }
+  }
+
+  for (int i = 0; i < leds; i++) {
+    pixels.setPixelColor(i, pixels.Color(r, g, b));
+    pixels.show();
+    delay(10);
+  }
+
+  //  server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+  handleRoot();
 }
 
 
@@ -192,6 +337,14 @@ String textToAhref(String text) {
   Serial.println(ahref);
   return ahref;
 }
+
+String textToButton(String text, String url) {
+  String endpointText = ip2Str(WiFi.localIP()) + url;
+  String ahref = String("<a href=\"") + url + String("\"><button>   ") + text  + String("   </button></a> ");
+  Serial.println(String("Endpoint: ") + endpointText);
+  return ahref;
+}
+
 
 
 String ip2Str(IPAddress ip) {
