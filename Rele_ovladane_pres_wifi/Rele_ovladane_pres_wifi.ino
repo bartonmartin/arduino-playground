@@ -180,7 +180,7 @@ void handleRoot() {
 }
 
 
-void sendHttpRequest(int r = 0, int g = 0, int b = 0) {
+void sendHttpRequest(int r, int g, int b) {
   if ((wiFiMulti.run() == WL_CONNECTED)) {
 
     WiFiClient client;
