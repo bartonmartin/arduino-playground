@@ -1,13 +1,14 @@
-// HTTP server co bezi na svabu za dolar
+// HTTP server running on an ESP8266
 
-// include pouzitych knihoven
+// include all libraries used in the project
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
+#include <WEMOS_SHT3X.h>
 
 
-// definice pinu
+// definition of used pins
 #define PIN_RELAY_1         D8
 #define PIN_RELAY_2         D7
 #define PIN_RELAY_3         D6
@@ -15,20 +16,23 @@
 #define PIN_BUTTON          D3
 
 
-// definice ID pro kazde rele
+// definition of ID for each relay
 #define ID_RELAY_1          "1"
 #define ID_RELAY_2          "2"
 #define ID_RELAY_3          "3"
 
 
-// nastaveni wifi site
+// wifi network stuff
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
 
 
-//192.168.2.xxx port 80
+// 192.168.2.xxx port 80
 ESP8266WebServer server(80);
 ESP8266WiFiMulti wiFiMulti;
+
+// I2C Interface digital temperature and humidity sensor
+SHT3X sht30(0x45);
 
 
 // stavove promene relatek a tlacitka
@@ -46,6 +50,33 @@ int buttonState2 = LOW;
 // prepinani rele na tlacitku
 int selectedRelayPin = PIN_RELAY_1;
 String selectedRelayId = "1";
+
+int relayPinArray[] = {PIN_RELAY_1, PIN_RELAY_2, PIN_RELAY_3};
+String relayIdArray[] = {ID_RELAY_1, ID_RELAY_2, ID_RELAY_3};
+int selectedIndex = 0;
+
+
+
+
+// Button timing variables
+int debounce = 10;          // ms debounce period to prevent flickering when pressing or releasing the button
+int DCgap = 150;            // max ms between clicks for a double click event
+int holdTime = 1000;        // ms hold period: how long to wait for press+hold event
+int longHoldTime = 3000;    // ms long hold period: how long to wait for press+hold event
+
+// Button variables
+boolean buttonVal = HIGH;   // value read from button
+boolean buttonLast = HIGH;  // buffered value of the button's previous state
+boolean DCwaiting = false;  // whether we're waiting for a double click (down)
+boolean DConUp = false;     // whether to register a double click on next release, or whether to wait and click
+boolean singleOK = true;    // whether it's OK to do a single click
+long downTime = -1;         // time the button was pressed down
+long upTime = -1;           // time the button was released
+boolean ignoreUp = false;   // whether to ignore the button release because the click+hold was triggered
+boolean waitForUp = false;        // when held, whether to wait for the up event
+boolean holdEventPast = false;    // whether or not the hold event happened already
+boolean longHoldEventPast = false;// whether or not the long hold event happened already
+
 
 
 /*
@@ -102,7 +133,12 @@ void setup(void) {
 
 void loop(void) {
   server.handleClient();
-  handleButton();
+  // Get button event and act accordingly
+  int b = checkButton();
+  if (b == 1) clickEvent();
+  if (b == 2) doubleClickEvent();
+  if (b == 3) holdEvent();
+  if (b == 4) longHoldEvent();
 }
 
 
@@ -113,18 +149,99 @@ void loop(void) {
 */
 
 
+int checkButton() {
+  int event = 0;
+  buttonVal = digitalRead(PIN_BUTTON);
+  // Button pressed down
+  if (buttonVal == LOW && buttonLast == HIGH && (millis() - upTime) > debounce)
+  {
+    downTime = millis();
+    ignoreUp = false;
+    waitForUp = false;
+    singleOK = true;
+    holdEventPast = false;
+    longHoldEventPast = false;
+    if ((millis() - upTime) < DCgap && DConUp == false && DCwaiting == true)  DConUp = true;
+    else  DConUp = false;
+    DCwaiting = false;
+  }
+  // Button released
+  else if (buttonVal == HIGH && buttonLast == LOW && (millis() - downTime) > debounce)
+  {
+    if (not ignoreUp)
+    {
+      upTime = millis();
+      if (DConUp == false) DCwaiting = true;
+      else
+      {
+        event = 2;
+        DConUp = false;
+        DCwaiting = false;
+        singleOK = false;
+      }
+    }
+  }
+  // Test for normal click event: DCgap expired
+  if ( buttonVal == HIGH && (millis() - upTime) >= DCgap && DCwaiting == true && DConUp == false && singleOK == true && event != 2)
+  {
+    event = 1;
+    DCwaiting = false;
+  }
+  // Test for hold
+  if (buttonVal == LOW && (millis() - downTime) >= holdTime) {
+    // Trigger "normal" hold
+    if (not holdEventPast)
+    {
+      event = 3;
+      waitForUp = true;
+      ignoreUp = true;
+      DConUp = false;
+      DCwaiting = false;
+      //downTime = millis();
+      holdEventPast = true;
+    }
+    // Trigger "long" hold
+    if ((millis() - downTime) >= longHoldTime)
+    {
+      if (not longHoldEventPast)
+      {
+        event = 4;
+        longHoldEventPast = true;
+      }
+    }
+  }
+  buttonLast = buttonVal;
+  return event;
+}
+
+
 void handleButton() {
   // load new value for this loop
-  buttonState2 = digitalRead(PIN_BUTTON);
+  logEndpointMessage((String("button pressed: ") + selectedIndex));
+  switchRelay(relayPinArray[selectedIndex], relayIdArray[selectedIndex]);
+  isButtonOn = !isButtonOn;
+}
 
-  if (buttonState1 == LOW && buttonState2 == HIGH) {
-    logEndpointMessage("button pressed");
-    switchRelay(selectedRelayPin, ID_RELAY_1);
-    isButtonOn = !isButtonOn;
+
+void clickEvent() {
+  logEndpointMessage((String("button click: ") + selectedIndex));
+  handleButton();
+}
+
+void doubleClickEvent() {
+  selectedIndex++;
+  if (selectedIndex >= 3) {
+    selectedIndex = 0;
   }
+  logEndpointMessage((String("button double click: ") + selectedIndex));
+}
 
-  // save old value for next loop
-  buttonState1 = buttonState2;
+void holdEvent() {
+  logEndpointMessage("button hold");
+}
+
+void longHoldEvent() {
+  logEndpointMessage("button long hold");
 }
 
 
@@ -143,9 +260,23 @@ void handleRoot() {
 
   String paragraph = String("<p>");
   String lineBreak = String("<br>");
-  String buttons = textToButton(ID_RELAY_1, isRelay1On)
+  String buttons = textToButton("Root", "/")
+                   + textToButton(ID_RELAY_1, isRelay1On)
                    + textToButton(ID_RELAY_2, isRelay2On)
                    + textToButton(ID_RELAY_3, isRelay3On);
+
+  if (sht30.get() == 0) {
+    logEndpointMessage("Reading temp and humidity");
+    Serial.println("Get temp!");
+  }
+  else
+  {
+    Serial.println("Error!");
+  }
+
+  String temperature = String("Temperature in Celsius : ") + sht30.cTemp + String(" Celsius");
+  String pressure = String("Relative humidity : ") + sht30.humidity + String(" %");
+
 
   String endpoints = textToAhref("/switchOn") + paragraph
                      + textToAhref("/switchOff") + paragraph
@@ -156,25 +287,34 @@ void handleRoot() {
                        + relayState(ID_RELAY_2, boolToString(isRelay2On)) + paragraph
                        + relayState(ID_RELAY_3, boolToString(isRelay3On)) + paragraph;
 
+  String autoRefresh = String("<meta http-equiv=\"refresh\" content=\"5\">"); //refresh every 5 seconds
+
   String style = String("<style>body {background-color: black;color: white;}</style>");
   String title = String("<title>ESP8266 Light server</title>");
   String head = String("<head>") + style + title + String("</head>");
   String body = String("<body>")
-                + String("<h1>HTTP server works!</h1>") + paragraph
-                + lineBreak
+                + paragraph + lineBreak
+                + paragraph + lineBreak
+                + String("<h4>Tap button to switch light</h4>") + lineBreak
+                + buttons + lineBreak
+                + paragraph + lineBreak
+                + temperature + lineBreak
+                + pressure + lineBreak
+                + paragraph + lineBreak
+                + paragraph + lineBreak
+                + String("<h4>HTTP server works!</h4>") + paragraph
                 + String("This is a super simple website, running on an ESP8266 based micro controller :)") + paragraph
-                + String("You can switch 3 different lights with it!</p>") + paragraph
-                + lineBreak
-                + String("<h3>Tap on buttons right here:</h3>") + paragraph + lineBreak
-                + buttons + paragraph + lineBreak
-                + String("Or you call any <b>endpoint</b> via browser or an app:") + paragraph + lineBreak
+                + String("You can see real time temperature and humidy and also you can control a relay.") + paragraph
+                + paragraph + lineBreak
+                + paragraph + lineBreak
+                + String("Or call any <b>endpoint</b> via browser or an app:") + paragraph + lineBreak
                 + endpoints + paragraph + lineBreak
                 + paragraph + lineBreak
                 + paragraph + lineBreak
                 + String("<i>Just for debugging purposes, here is <b>status of all lights:</b>") + paragraph + lineBreak
                 + relaysState + paragraph + lineBreak
                 + String("</i></body>");
-  String rootContent = String("<html>") + head + body + String("</html>");
+  String rootContent = String("<html>") + autoRefresh + head + body + String("</html>");
 
   server.send(httpRequestCode, "text/html", rootContent);
 }
@@ -434,7 +574,6 @@ String getClientIp() {
 String textToAhref(String text) {
   String endpointText = ip2Str(WiFi.localIP()) + text;
   String ahref = String("<a href=\"") + text + String("\">") + endpointText + String("</a>");
-  Serial.println(String("Endpoint: ") + endpointText);
   return ahref;
 }
 
@@ -456,7 +595,6 @@ String textToButton(String relayId, boolean isRelayOn) {
 String textToButton(String text, String url) {
   String endpointText = ip2Str(WiFi.localIP()) + url;
   String ahref = String("<a href=\"") + url + String("\"><button>   ") + text  + String("   </button></a> ");
-  Serial.println(String("Endpoint: ") + endpointText);
   return ahref;
 }
 
