@@ -4,8 +4,6 @@
 
 // definice pinu
 #define PIN_LED             D2
-#define PIN_BUTTON          D3
-#define LED_INDEX           0
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
 
@@ -33,7 +31,6 @@ void setup(void) {
 
   // nastaveni LED aby se sni dalo blikat
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(PIN_BUTTON, INPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
   // nastaveni wifi modu, jmena site a hesla
@@ -70,26 +67,12 @@ void setup(void) {
 
 void loop(void) {
   server.handleClient();
-
-
-  // nacti novou hodnotu pro tento loop
-  buttonState2 = digitalRead(PIN_BUTTON);
-
-  if (buttonState1 == LOW && buttonState2 == HIGH) {
-    // tlacitko zmenilo svuj stav ;
-  }
-
-  // uloz starou hodnotu na dalsi loop
-  buttonState1 = buttonState2;
-
-  // pauza 100ms
-  delay(100);
 }
 
 
 int checkValue(int value) {
-  if (value > 255) {
-    return 0;
+  if (value > 50) {
+    return 50;
   }
   if (value < 0) {
     return 0;
@@ -136,7 +119,8 @@ String getButton(String color, String function) {
 
 
 String getUrl(int red, int green, int  blue) {
-  return String("http://192.168.2.243/rgb?r=") + red + String("&g=") + green + String("&b=") + blue;
+  String localIp = ip2Str(WiFi.localIP());
+  return String("http://") + localIp + String("/rgb?r=") + red + String("&g=") + green + String("&b=") + blue;
 }
 
 
@@ -262,42 +246,6 @@ void handleRgb() {
   }
 
   //server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-  handleRoot();
-}
-
-
-void handleRgbLocal() {
-  logEndpointMessage("/rgb");
-
-  int httpRequestCode = 200; // OK
-
-  for (int i = 0; i < server.args(); i = i + 1) {
-    String argumentName = String(server.argName(i));
-    String argumentValue = String(server.arg(i));
-    Serial.print(String(i) + " ");  //print id
-    Serial.print("\"" + argumentName + "\" ");  //print name
-    Serial.println("\"" + argumentValue + "\"");  //print value
-
-    if (argumentName == "r") {
-      r = checkValue(server.arg(i).toInt());
-    }
-
-    if (argumentName == "g") {
-      g = checkValue(server.arg(i).toInt());
-    }
-
-    if (argumentName == "b") {
-      b = checkValue(server.arg(i).toInt());
-    }
-  }
-
-  for (int i = 0; i < leds; i++) {
-    pixels.setPixelColor(i, pixels.Color(r, g, b));
-    pixels.show();
-    delay(10);
-  }
-
-  //  server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
   handleRoot();
 }
 
