@@ -7,7 +7,7 @@
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
 
-int leds = 60;
+int leds = 8;
 
 //192.168.2.xxx port 80
 ESP8266WebServer server(80);
@@ -54,6 +54,7 @@ void setup(void) {
   server.on("/vypni", handleTurnOff);
   server.on("/zapni", handleTurnOn);
   server.on("/rgb", handleRgb);
+  server.on("/blinker", handleBlinker);
   server.onNotFound(handleNotFound);
 
   // zapiname http server
@@ -184,11 +185,7 @@ void handleTurnOn() {
   g = 5;
   b = 5;
 
-  for (int i = 0; i < leds; i++) {
-    pixels.setPixelColor(i, pixels.Color(r, g, b));
-    pixels.show();
-    delay(10);
-  }
+  setStripColor(r, g, b, 10);
   //  server.send(httpRequestCode, "text/plain", "prave si aktivoval LED pres wifi pomoci prohlizece !!!!");
   handleRoot();
 }
@@ -204,11 +201,7 @@ void handleTurnOff() {
   g = 0;
   b = 0;
 
-  for (int i = 0; i < leds; i++) {
-    pixels.setPixelColor(i, pixels.Color(r, g, b));
-    pixels.show();
-    delay(10);
-  }
+  setStripColor(r, g, b, 10);
   //  server.send(httpRequestCode, "text/plain", "prave si deaktivoval LED pres wifi pomoci prohlizece");
   handleRoot();
 }
@@ -250,6 +243,19 @@ void handleRgb() {
 }
 
 
+void handleBlinker() {
+  logEndpointMessage("/blinker");
+
+  setStripColor(9, 2, 0, 50);
+  delay(400);
+
+  setStripColor(0, 0, 0, 1);
+  delay(400);
+  
+  handleRoot();
+}
+
+
 void handleNotFound() {
   logEndpointMessage("404 - " + server.uri());
 
@@ -266,6 +272,15 @@ void handleNotFound() {
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
   server.send(httpRequestCode, "text/plain", message);
+}
+
+
+void setStripColor(int r, int g, int b, int pixelAnimationDelay) {
+  for (int i = 0; i < leds; i++) {
+    pixels.setPixelColor(i, pixels.Color(r, g, b));
+    pixels.show();
+    delay(pixelAnimationDelay);
+  }
 }
 
 
