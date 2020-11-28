@@ -99,14 +99,14 @@ void handleForward() {
   logEndpointMessage("/ forward");
 
   digitalWrite(PIN_1, LOW);
-  digitalWrite(PIN_4, LOW);
-  digitalWrite(PIN_5, LOW);
-  digitalWrite(PIN_7, LOW);
+  digitalWrite(PIN_3, LOW);
+  digitalWrite(PIN_6, LOW);
+  digitalWrite(PIN_8, LOW);
   delay(stepLenghtForward);
   digitalWrite(PIN_1, HIGH);
-  digitalWrite(PIN_4, HIGH);
-  digitalWrite(PIN_5, HIGH);
-  digitalWrite(PIN_7, HIGH);
+  digitalWrite(PIN_3, HIGH);
+  digitalWrite(PIN_6, HIGH);
+  digitalWrite(PIN_8, HIGH);
 
   handleRoot();
 }
@@ -115,14 +115,14 @@ void handleBackward() {
   logEndpointMessage("/ backward");
 
   digitalWrite(PIN_2, LOW);
-  digitalWrite(PIN_3, LOW);
-  digitalWrite(PIN_6, LOW);
-  digitalWrite(PIN_8, LOW);
+  digitalWrite(PIN_4, LOW);
+  digitalWrite(PIN_5, LOW);
+  digitalWrite(PIN_7, LOW);
   delay(stepLenghtBackward);
   digitalWrite(PIN_2, HIGH);
-  digitalWrite(PIN_3, HIGH);
-  digitalWrite(PIN_6, HIGH);
-  digitalWrite(PIN_8, HIGH);
+  digitalWrite(PIN_4, HIGH);
+  digitalWrite(PIN_5, HIGH);
+  digitalWrite(PIN_7, HIGH);
 
   handleRoot();
 }
@@ -130,15 +130,15 @@ void handleBackward() {
 void handleRight() {
   logEndpointMessage("/ right");
 
-  digitalWrite(PIN_4, LOW);
-  digitalWrite(PIN_5, LOW);
   digitalWrite(PIN_2, LOW);
-  digitalWrite(PIN_8, LOW);
+  digitalWrite(PIN_3, LOW);
+  digitalWrite(PIN_6, LOW);
+  digitalWrite(PIN_7, LOW);
   delay(stepLenghtLeft);
-  digitalWrite(PIN_4, HIGH);
-  digitalWrite(PIN_5, HIGH);
   digitalWrite(PIN_2, HIGH);
-  digitalWrite(PIN_8, HIGH);
+  digitalWrite(PIN_3, HIGH);
+  digitalWrite(PIN_6, HIGH);
+  digitalWrite(PIN_7, HIGH);
 
   handleRoot();
 }
@@ -147,14 +147,14 @@ void handleLeft() {
   logEndpointMessage("/ left");
 
   digitalWrite(PIN_1, LOW);
-  digitalWrite(PIN_7, LOW);
-  digitalWrite(PIN_3, LOW);
-  digitalWrite(PIN_6, LOW);
+  digitalWrite(PIN_4, LOW);
+  digitalWrite(PIN_5, LOW);
+  digitalWrite(PIN_8, LOW);
   delay(stepLenghtRight);
   digitalWrite(PIN_1, HIGH);
-  digitalWrite(PIN_7, HIGH);
-  digitalWrite(PIN_3, HIGH);
-  digitalWrite(PIN_6, HIGH);
+  digitalWrite(PIN_4, HIGH);
+  digitalWrite(PIN_5, HIGH);
+  digitalWrite(PIN_8, HIGH);
 
   handleRoot();
 }
