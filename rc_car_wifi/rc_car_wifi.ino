@@ -15,10 +15,10 @@
 //192.168.2.xxx port 80
 ESP8266WebServer server(80);
 
-int stepLenghtLeft = 25;
-int stepLenghtRight = 25;
-int stepLenghtForward = 50;
-int stepLenghtBackward = 50;
+int stepLenghtLeft = 100;
+int stepLenghtRight = 100;
+int stepLenghtForward = 500;
+int stepLenghtBackward = 500;
 
 
 void setup(void) {
@@ -27,14 +27,14 @@ void setup(void) {
 
   // value LOW == motor is on
   // value HIGH == motor is off
-  // PIN_1 LOW - right front forward
-  // PIN_2 LOW - right front backward
-  // PIN_3 LOW - left front backward
-  // PIN_4 LOW - left front forward
-  // PIN_5 LOW - left rear forward
-  // PIN_6 LOW - left rear backward
-  // PIN_7 LOW - right rear forward
-  // PIN_8 LOW - right rear backward
+  // PIN_1 LOW - front right forward
+  // PIN_2 LOW - front right backward
+  // PIN_3 LOW - front left forward
+  // PIN_4 LOW - front left backward
+  // PIN_5 LOW - rear right backward
+  // PIN_6 LOW - rear right forward
+  // PIN_7 LOW - rear left backward
+  // PIN_8 LOW - rear left forward
 
   // setup pin mode
   pinMode(PIN_1, OUTPUT);
@@ -132,13 +132,13 @@ void handleRight() {
 
   digitalWrite(PIN_2, LOW);
   digitalWrite(PIN_3, LOW);
-  digitalWrite(PIN_6, LOW);
-  digitalWrite(PIN_7, LOW);
-  delay(stepLenghtLeft);
+  digitalWrite(PIN_5, LOW);
+    digitalWrite(PIN_8, LOW);
+  delay(stepLenghtRight);
   digitalWrite(PIN_2, HIGH);
   digitalWrite(PIN_3, HIGH);
-  digitalWrite(PIN_6, HIGH);
-  digitalWrite(PIN_7, HIGH);
+  digitalWrite(PIN_5, HIGH);
+    digitalWrite(PIN_8, HIGH);
 
   handleRoot();
 }
@@ -148,13 +148,13 @@ void handleLeft() {
 
   digitalWrite(PIN_1, LOW);
   digitalWrite(PIN_4, LOW);
-  digitalWrite(PIN_5, LOW);
-  digitalWrite(PIN_8, LOW);
-  delay(stepLenghtRight);
+  digitalWrite(PIN_6, LOW);
+    digitalWrite(PIN_7, LOW);
+  delay(stepLenghtLeft);
   digitalWrite(PIN_1, HIGH);
   digitalWrite(PIN_4, HIGH);
-  digitalWrite(PIN_5, HIGH);
-  digitalWrite(PIN_8, HIGH);
+  digitalWrite(PIN_6, HIGH);
+    digitalWrite(PIN_7, HIGH);
 
   handleRoot();
 }
@@ -187,8 +187,6 @@ void handleSwitchOffDelay() {
     }
   }
 
-
-  //server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
   handleRoot();
 }
 
@@ -202,13 +200,16 @@ void handleRoot() {
   String paragraph = String("<p>");
   String lineBreak = String("<br>");
 
-  String stepLenghtText = paragraph
-                          + String("Forward ") + stepLenghtForward
-                          + String(" Backward ") + stepLenghtBackward
-                          + paragraph
-                          + String("Left ") + stepLenghtLeft
-                          + String(" Right ") + stepLenghtRight
-                          + paragraph;
+  String stepLenghtText =  String("Step lenght in ms:")
+                           + paragraph
+                           + String("Forward ") + stepLenghtForward
+                           + String(" Backward ") + stepLenghtBackward
+                           + paragraph
+                           + String("Left ") + stepLenghtLeft
+                           + String(" Right ") + stepLenghtRight
+                           + paragraph
+                           + String("donut is 2175")
+                           + paragraph;
 
   String buttons = lineBreak
                    + getButton("forward") + getButton("backward")
@@ -220,7 +221,7 @@ void handleRoot() {
                      + textToAhref("/backward") + paragraph
                      + textToAhref("/right") + paragraph
                      + textToAhref("/left") + paragraph
-                     + textToAhref("/stepLenght?f=50&b=50&l=25&r=25") + paragraph;
+                     + textToAhref("/stepLenght?f=500&b=500&l=100&r=100") + paragraph;
 
   String style = String("<style>body {background-color: black;color: white;}</style>");
 
