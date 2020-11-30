@@ -20,6 +20,8 @@ int stepLenghtRight = 100;
 int stepLenghtForward = 500;
 int stepLenghtBackward = 500;
 
+float speed = 100;
+
 
 void setup(void) {
   // setup serial console
@@ -98,10 +100,10 @@ void setupHttpServer() {
 void handleForward() {
   logEndpointMessage("/ forward");
 
-  digitalWrite(PIN_1, LOW);
-  digitalWrite(PIN_3, LOW);
-  digitalWrite(PIN_6, LOW);
-  digitalWrite(PIN_8, LOW);
+  analogWrite(PIN_1, speed);
+  analogWrite(PIN_3, speed);
+  analogWrite(PIN_6, speed);
+  analogWrite(PIN_8, speed);
   delay(stepLenghtForward);
   digitalWrite(PIN_1, HIGH);
   digitalWrite(PIN_3, HIGH);
@@ -114,10 +116,10 @@ void handleForward() {
 void handleBackward() {
   logEndpointMessage("/ backward");
 
-  digitalWrite(PIN_2, LOW);
-  digitalWrite(PIN_4, LOW);
-  digitalWrite(PIN_5, LOW);
-  digitalWrite(PIN_7, LOW);
+  analogWrite(PIN_2, speed);
+  analogWrite(PIN_4, speed);
+  analogWrite(PIN_5, speed);
+  analogWrite(PIN_7, speed);
   delay(stepLenghtBackward);
   digitalWrite(PIN_2, HIGH);
   digitalWrite(PIN_4, HIGH);
@@ -130,15 +132,15 @@ void handleBackward() {
 void handleRight() {
   logEndpointMessage("/ right");
 
-  digitalWrite(PIN_2, LOW);
-  digitalWrite(PIN_3, LOW);
-  digitalWrite(PIN_5, LOW);
-    digitalWrite(PIN_8, LOW);
+  analogWrite(PIN_2, speed);
+  analogWrite(PIN_3, speed);
+  analogWrite(PIN_5, speed);
+  analogWrite(PIN_8, speed);
   delay(stepLenghtRight);
   digitalWrite(PIN_2, HIGH);
   digitalWrite(PIN_3, HIGH);
   digitalWrite(PIN_5, HIGH);
-    digitalWrite(PIN_8, HIGH);
+  digitalWrite(PIN_8, HIGH);
 
   handleRoot();
 }
@@ -146,15 +148,15 @@ void handleRight() {
 void handleLeft() {
   logEndpointMessage("/ left");
 
-  digitalWrite(PIN_1, LOW);
-  digitalWrite(PIN_4, LOW);
-  digitalWrite(PIN_6, LOW);
-    digitalWrite(PIN_7, LOW);
+  analogWrite(PIN_1, speed);
+  analogWrite(PIN_4, speed);
+  analogWrite(PIN_6, speed);
+  analogWrite(PIN_7, speed);
   delay(stepLenghtLeft);
   digitalWrite(PIN_1, HIGH);
   digitalWrite(PIN_4, HIGH);
   digitalWrite(PIN_6, HIGH);
-    digitalWrite(PIN_7, HIGH);
+  digitalWrite(PIN_7, HIGH);
 
   handleRoot();
 }
@@ -184,6 +186,12 @@ void handleSwitchOffDelay() {
 
     if (argumentName == "r") {
       stepLenghtRight = server.arg(i).toInt();
+    }
+
+    if (argumentName == "speed") {
+      float speedValue = argumentValue.toFloat();
+      // do some magic with the value
+      speed = speedValue;
     }
   }
 
@@ -221,7 +229,7 @@ void handleRoot() {
                      + textToAhref("/backward") + paragraph
                      + textToAhref("/right") + paragraph
                      + textToAhref("/left") + paragraph
-                     + textToAhref("/stepLenght?f=500&b=500&l=100&r=100") + paragraph;
+                     + textToAhref("/stepLenght?f=500&b=500&l=100&r=100&speed=100") + paragraph;
 
   String style = String("<style>body {background-color: black;color: white;}</style>");
 
