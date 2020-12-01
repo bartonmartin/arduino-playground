@@ -17,9 +17,9 @@
 
 
 // definition of ID for each relay
-#define ID_RELAY_1          "1"
-#define ID_RELAY_2          "2"
-#define ID_RELAY_3          "3"
+#define ID_RELAY_1          1
+#define ID_RELAY_2          2
+#define ID_RELAY_3          3
 
 
 // wifi network stuff
@@ -37,10 +37,10 @@ SHT3X sht30(0x45);
 
 
 // relays
-int relayIndex = 0;                                             // index is used to select correct ID and PIN from arrays
-boolean relayOnArray[] = {false, false, false};                      // used to store relays state ON/OFF
-String relayIdArray[] = {ID_RELAY_1, ID_RELAY_2, ID_RELAY_3};   // used to store relays ID
-int relayPinArray[] = {PIN_RELAY_1, PIN_RELAY_2, PIN_RELAY_3};  // used to store relays PIN
+int relayIndex = 0;                                                   // index is used to select correct ID and PIN from arrays
+boolean relayOnArray[] = {false};                       // used to store relays state ON/OFF
+int relayIdArray[] = {ID_RELAY_1};         // used to store relays ID
+int relayPinArray[] = {PIN_RELAY_1};        // used to store relays PIN
 
 
 // Button timing variables
@@ -76,7 +76,7 @@ void setup(void) {
   Serial.begin(115200);
 
   // pins setup
-  for (int i = 0; i < relayPinArray.length; i++) {
+  for (int i = 0; i < sizeof(relayPinArray); i++) {
     pinMode(relayPinArray[i], OUTPUT);
   }
   pinMode(PIN_BUTTON, INPUT);
@@ -214,7 +214,7 @@ void clickEvent() {
 
 void doubleClickEvent() {
   relayIndex++;
-  if (relayIndex >= 3) {
+  if (relayIndex >= sizeof(relayIdArray)) {
     relayIndex = 0;
   }
   logEndpointMessage((String("button double click: ") + relayIndex));
@@ -248,7 +248,7 @@ void handleRoot() {
   String lineBreak = String("<br>");
   String buttons = textToButton("Root", "/");
 
-  for (int i = 0; i < relayOnArray.length; i++) {
+  for (int i = 0; i < sizeof(relayOnArray); i++) {
     buttons += textToButton(relayIdArray[i], relayOnArray[i]);
   }
 
@@ -422,7 +422,7 @@ void handleRelay() {
   logEndpointMessage(" / light");
 
   int httpRequestCode = 200; // OK
-  String relayNumber = "0";
+  int relayNumber = 0;
 
   boolean isrelayOnArray = false;
 
@@ -434,7 +434,7 @@ void handleRelay() {
     Serial.println("\"" + argumentValue + "\"");  //print value
 
     if (argumentName == "number") {
-      relayNumber = server.arg(i);
+      relayNumber = server.arg(i).toInt();
     }
     if (argumentName == "isOn") {
       isrelayOnArray = server.arg(i) == "true";
@@ -489,36 +489,36 @@ void handleNotFound() {
 */
 
 
-void switchRelay(int outputPin, String relayId) {
-  boolean relayOnArray = false;
+void switchRelay(int outputPin, int relayId) {
+  boolean relayOn = false;
 
   // tlacitko zmenilo svuj stav ;
   if (digitalRead(outputPin) == HIGH) {
-    relayOnArray = false;
+    relayOn = false;
     Serial.println(String("switch OFF light ") + relayId);
   } else {
-    relayOnArray = true;
+    relayOn = true;
     Serial.println(String("switch ON light ") + relayId);
   }
 
   switch (outputPin) {
     case PIN_RELAY_1:
-      relayOnArray[0] = relayOnArray;
+      relayOnArray[0] = relayOn;
       break;
     case PIN_RELAY_2:
-      relayOnArray[1] = relayOnArray;
+      relayOnArray[1] = relayOn;
       break;
     case PIN_RELAY_3:
-      relayOnArray[2] = relayOnArray;
+      relayOnArray[2] = relayOn;
       break;
   }
 
   // zapis hodnotu do rele
-  digitalWrite(outputPin , relayOnArray ? HIGH : LOW);
+  digitalWrite(outputPin , relayOn ? HIGH : LOW);
 }
 
 
-String relayState(String relayId, String state) {
+String relayState(int relayId, String state) {
   return String("Light ") + relayId + String(" : ") + state;
 }
 
@@ -558,7 +558,7 @@ String textToAhref(String text) {
 }
 
 
-String textToButton(String relayId, boolean isrelayOnArray) {
+String textToButton(int relayId, boolean isrelayOnArray) {
   String text = "";
   String url = "";
   if (relayId == ID_RELAY_1) {
