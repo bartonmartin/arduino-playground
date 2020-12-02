@@ -1,21 +1,3 @@
-/*********************************************************************
-  This is an example for our Monochrome OLEDs based on SSD1306 drivers
-
-  Pick one up today in the adafruit shop!
-  ------> http://www.adafruit.com/category/63_98
-
-  This example is for a 64x48 size display using I2C to communicate
-  3 pins are required to interface (2 I2C and one reset)
-
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit and open-source hardware by purchasing
-  products from Adafruit!
-
-  Written by Limor Fried/Ladyada  for Adafruit Industries.
-  BSD license, check license.txt for more information
-  All text above, and the splash screen must be included in any redistribution
-*********************************************************************/
-
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -24,24 +6,23 @@
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
+
+
+#define PROGRAM_NAME "OLED_OTA"
+
 
 // SCL GPIO5
 // SDA GPIO4
 #define OLED_RESET 0  // GPIO0
 Adafruit_SSD1306 display(OLED_RESET);
-
 #define NUMFLAKES 10
 #define XPOS 0
 #define YPOS 1
 #define DELTAY 2
-
-
-// wifi network stuff
-#define WIFI_SSID           "IoT"
-#define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
-
-
-
 #define LOGO16_GLCD_HEIGHT 16
 #define LOGO16_GLCD_WIDTH  16
 static const unsigned char PROGMEM logo16_glcd_bmp[] =
@@ -67,12 +48,59 @@ static const unsigned char PROGMEM logo16_glcd_bmp[] =
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
+#define PIN_BUTTON D3
+
+// wifi network stuff
+#define WIFI_SSID           "IoT"
+#define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
+
+// 192.168.2.xxx port 80
+ESP8266WebServer server(80);
+ESP8266WiFiMulti wiFiMulti;
+
+String text = "Hello";
+boolean displayReady = false;
+
+// Button timing variables
+int debounce = 20;                  // ms debounce period to prevent flickering when pressing or releasing the button
+int DCgap = 150;                    // max ms between clicks for a double click event
+int holdTime = 1000;                // ms hold period: how long to wait for press+hold event
+int longHoldTime = 3000;            // ms long hold period: how long to wait for press+hold event
+
+// Button variables
+boolean buttonVal = HIGH;           // value read from button
+boolean buttonLast = HIGH;          // buffered value of the button's previous state
+boolean DCwaiting = false;          // whether we're waiting for a double click (down)
+boolean DConUp = false;             // whether to register a double click on next release, or whether to wait and click
+boolean singleOK = true;            // whether it's OK to do a single click
+long downTime = -1;                 // time the button was pressed down
+long upTime = -1;                   // time the button was released
+boolean ignoreUp = false;           // whether to ignore the button release because the click+hold was triggered
+boolean waitForUp = false;          // when held, whether to wait for the up event
+boolean holdEventPast = false;      // whether or not the hold event happened already
+boolean longHoldEventPast = false;  // whether or not the long hold event happened already
+
+
 void setup()   {
   Serial.begin(115200);
+  logMessage("setup start");
+
+  pinMode(PIN_BUTTON, INPUT);
+
+  setupDisplay();
+  setupHttpServer();
+  setupArduinoOta();
+}
 
 
-  setupOTA();
+void loop() {
+  ArduinoOTA.handle();
+  server.handleClient();
+  handleButton();
+}
 
+
+void setupDisplay() {
   // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
   // init done
@@ -95,63 +123,14 @@ void setup()   {
   delay(2000);
   display.clearDisplay();
 
-  // draw many lines
-  testdrawline();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
+  displayReady = true;
 
-  // draw rectangles
-  testdrawrect();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
+  logMessage("display ready");
+  delay(1000);
+}
 
-  // draw multiple rectangles
-  testfillrect();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
 
-  // draw mulitple circles
-  testdrawcircle();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw a white circle, 10 pixel radius
-  display.fillCircle(display.width() / 2, display.height() / 2, 10, WHITE);
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  testdrawroundrect();
-  delay(2000);
-  display.clearDisplay();
-
-  testfillroundrect();
-  delay(2000);
-  display.clearDisplay();
-
-  testdrawtriangle();
-  delay(2000);
-  display.clearDisplay();
-
-  testfilltriangle();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw the first ~12 characters in the font
-  testdrawchar();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw scrolling text
-  testscrolltext();
-  delay(2000);
-  display.clearDisplay();
-
+void runTextTest() {
   // text display tests
   display.setTextSize(1);
   display.setTextColor(WHITE);
@@ -163,248 +142,45 @@ void setup()   {
   display.setTextColor(WHITE);
   display.print("0x"); display.println(0xDEADBEEF, HEX);
   display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // miniature bitmap display
-  display.drawBitmap(30, 16,  logo16_glcd_bmp, 16, 16, 1);
-  display.display();
-  delay(1);
-
-  // invert the display
-  display.invertDisplay(true);
-  delay(1000);
-  display.invertDisplay(false);
   delay(1000);
   display.clearDisplay();
-
-  // draw a bitmap icon and 'animate' movement
-  testdrawbitmap(logo16_glcd_bmp, LOGO16_GLCD_HEIGHT, LOGO16_GLCD_WIDTH);
 }
 
 
-void loop() {
-  ArduinoOTA.handle();
-}
-
-
-void testdrawbitmap(const uint8_t *bitmap, uint8_t w, uint8_t h) {
-  uint8_t icons[NUMFLAKES][3];
-
-  // initialize
-  for (uint8_t f = 0; f < NUMFLAKES; f++) {
-    icons[f][XPOS] = random(display.width());
-    icons[f][YPOS] = 0;
-    icons[f][DELTAY] = random(5) + 1;
-
-    Serial.print("x: ");
-    Serial.print(icons[f][XPOS], DEC);
-    Serial.print(" y: ");
-    Serial.print(icons[f][YPOS], DEC);
-    Serial.print(" dy: ");
-    Serial.println(icons[f][DELTAY], DEC);
-  }
-
-  while (1) {
-    // draw each icon
-    for (uint8_t f = 0; f < NUMFLAKES; f++) {
-      display.drawBitmap(icons[f][XPOS], icons[f][YPOS], bitmap, w, h, WHITE);
-    }
-    display.display();
-    delay(200);
-
-    // then erase it + move it
-    for (uint8_t f = 0; f < NUMFLAKES; f++) {
-      display.drawBitmap(icons[f][XPOS], icons[f][YPOS], bitmap, w, h, BLACK);
-      // move it
-      icons[f][YPOS] += icons[f][DELTAY];
-      // if its gone, reinit
-      if (icons[f][YPOS] > display.height()) {
-        icons[f][XPOS] = random(display.width());
-        icons[f][YPOS] = 0;
-        icons[f][DELTAY] = random(5) + 1;
-      }
-    }
-  }
-}
-
-
-void testdrawchar(void) {
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-
-  for (uint8_t i = 0; i < 168; i++) {
-    if (i == '\n') continue;
-    display.write(i);
-    if ((i > 0) && (i % 21 == 0))
-      display.println();
-  }
-  display.display();
-  delay(1);
-}
-
-void testdrawcircle(void) {
-  for (int16_t i = 0; i < display.height(); i += 2) {
-    display.drawCircle(display.width() / 2, display.height() / 2, i, WHITE);
-    display.display();
-    delay(1);
-  }
-}
-
-void testfillrect(void) {
-  uint8_t color = 1;
-  for (int16_t i = 0; i < display.height() / 2; i += 3) {
-    // alternate colors
-    display.fillRect(i, i, display.width() - i * 2, display.height() - i * 2, color % 2);
-    display.display();
-    delay(1);
-    color++;
-  }
-}
-
-void testdrawtriangle(void) {
-  for (int16_t i = 0; i < min(display.width(), display.height()) / 2; i += 5) {
-    display.drawTriangle(display.width() / 2, display.height() / 2 - i,
-                         display.width() / 2 - i, display.height() / 2 + i,
-                         display.width() / 2 + i, display.height() / 2 + i, WHITE);
-    display.display();
-    delay(1);
-  }
-}
-
-void testfilltriangle(void) {
-  uint8_t color = WHITE;
-  for (int16_t i = min(display.width(), display.height()) / 2; i > 0; i -= 5) {
-    display.fillTriangle(display.width() / 2, display.height() / 2 - i,
-                         display.width() / 2 - i, display.height() / 2 + i,
-                         display.width() / 2 + i, display.height() / 2 + i, WHITE);
-    if (color == WHITE) color = BLACK;
-    else color = WHITE;
-    display.display();
-    delay(1);
-  }
-}
-
-void testdrawroundrect(void) {
-  for (int16_t i = 0; i < display.height() / 2 - 2; i += 2) {
-    display.drawRoundRect(i, i, display.width() - 2 * i, display.height() - 2 * i, display.height() / 4, WHITE);
-    display.display();
-    delay(1);
-  }
-}
-
-void testfillroundrect(void) {
-  uint8_t color = WHITE;
-  for (int16_t i = 0; i < display.height() / 2 - 2; i += 2) {
-    display.fillRoundRect(i, i, display.width() - 2 * i, display.height() - 2 * i, display.height() / 4, color);
-    if (color == WHITE) color = BLACK;
-    else color = WHITE;
-    display.display();
-    delay(1);
-  }
-}
-
-void testdrawrect(void) {
-  for (int16_t i = 0; i < display.height() / 2; i += 2) {
-    display.drawRect(i, i, display.width() - 2 * i, display.height() - 2 * i, WHITE);
-    display.display();
-    delay(1);
-  }
-}
-
-void testdrawline() {
-  for (int16_t i = 0; i < display.width(); i += 4) {
-    display.drawLine(0, 0, i, display.height() - 1, WHITE);
-    display.display();
-    delay(1);
-  }
-  for (int16_t i = 0; i < display.height(); i += 4) {
-    display.drawLine(0, 0, display.width() - 1, i, WHITE);
-    display.display();
-    delay(1);
-  }
-  delay(250);
-
-  display.clearDisplay();
-  for (int16_t i = 0; i < display.width(); i += 4) {
-    display.drawLine(0, display.height() - 1, i, 0, WHITE);
-    display.display();
-    delay(1);
-  }
-  for (int16_t i = display.height() - 1; i >= 0; i -= 4) {
-    display.drawLine(0, display.height() - 1, display.width() - 1, i, WHITE);
-    display.display();
-    delay(1);
-  }
-  delay(250);
-
-  display.clearDisplay();
-  for (int16_t i = display.width() - 1; i >= 0; i -= 4) {
-    display.drawLine(display.width() - 1, display.height() - 1, i, 0, WHITE);
-    display.display();
-    delay(1);
-  }
-  for (int16_t i = display.height() - 1; i >= 0; i -= 4) {
-    display.drawLine(display.width() - 1, display.height() - 1, 0, i, WHITE);
-    display.display();
-    delay(1);
-  }
-  delay(250);
-
-  display.clearDisplay();
-  for (int16_t i = 0; i < display.height(); i += 4) {
-    display.drawLine(display.width() - 1, 0, 0, i, WHITE);
-    display.display();
-    delay(1);
-  }
-  for (int16_t i = 0; i < display.width(); i += 4) {
-    display.drawLine(display.width() - 1, 0, i, display.height() - 1, WHITE);
-    display.display();
-    delay(1);
-  }
-  delay(250);
-}
-
-void testscrolltext(void) {
-  display.setTextSize(2);
-  display.setTextColor(WHITE);
-  display.setCursor(10, 0);
-  display.clearDisplay();
-  display.println("scroll");
-  display.display();
-  delay(1);
-
-  display.startscrollright(0x00, 0x0F);
-  delay(2000);
-  display.stopscroll();
-  delay(1000);
-  display.startscrollleft(0x00, 0x0F);
-  delay(2000);
-  display.stopscroll();
-  delay(1000);
-  display.startscrolldiagright(0x00, 0x07);
-  delay(2000);
-  display.startscrolldiagleft(0x00, 0x07);
-  delay(2000);
-  display.stopscroll();
-}
-
-
-void setupOTA() {
+void setupHttpServer() {
+  logMessage("HTTP server start setup");
+  // wifi settings
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
-  }
+  wiFiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
 
+  // waiting for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    logAddMessage(".");
+  }
+  logAddMessage("Connected to ");
+  logMessage(WIFI_SSID);
+  logMessage(String("IP address: ") + ip2Str(WiFi.localIP()));
+
+  // definition of all endpoints
+  server.on("/", handleRoot);
+  server.on("/display", handleDisplay);
+  server.onNotFound(handleNotFound);
+
+  // starting http server
+  server.begin();
+  logMessage("HTTP server started");
+}
+
+
+void setupArduinoOta() {
+  logMessage("ArduinoOTA Start setup");
   // Port defaults to 8266
   // ArduinoOTA.setPort(8266);
 
   // Hostname defaults to esp8266-[ChipID]
-  // ArduinoOTA.setHostname("myesp8266");
+  ArduinoOTA.setHostname(PROGRAM_NAME);
 
   // No authentication by default
   // ArduinoOTA.setPassword("admin");
@@ -422,10 +198,10 @@ void setupOTA() {
     }
 
     // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
+    logMessage("Start updating " + type);
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
+    logMessage("\nEnd");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
@@ -433,19 +209,374 @@ void setupOTA() {
   ArduinoOTA.onError([](ota_error_t error) {
     Serial.printf("Error[%u]: ", error);
     if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
+      logMessage("Auth Failed");
     } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
+      logMessage("Begin Failed");
     } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
+      logMessage("Connect Failed");
     } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
+      logMessage("Receive Failed");
     } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
+      logMessage("End Failed");
     }
   });
   ArduinoOTA.begin();
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  logMessage("ArduinoOTA Ready");
+  logMessage(String("IP address: ") + ip2Str(WiFi.localIP()));
+}
+
+
+void handleButton() {
+  // Get button event and act accordingly
+  int b = checkButton();
+  if (b == 1) clickEvent();
+  if (b == 2) doubleClickEvent();
+  if (b == 3) holdEvent();
+  if (b == 4) longHoldEvent();
+}
+
+
+/*
+
+   HTTP Server functions
+
+*/
+
+
+void handleRoot() {
+  logEndpointMessage(" / root");
+
+  int httpRequestCode = 200; // OK
+
+  String paragraph = String("<p>");
+  String lineBreak = String("<br>");
+  String buttons = textToButton("Root", "/");
+
+  String endpoints = textToAhref("/switchOn") + paragraph
+                     + textToAhref("/switchOff") + paragraph
+                     + textToAhref("/light?number=1&isOn=true") + paragraph
+                     + String("<i>Try <b>alpha feature: </b></i>") + textToAhref("/rgb?r=1&g=0&b=0") + paragraph;
+
+  String autoRefresh = String("<meta http-equiv=\"refresh\" content=\"5\">"); //refresh every 5 seconds
+
+  String style = String("<style>body {background-color: black;color: white;}</style>");
+  String title = String("<title>ESP8266 Light server</title>");
+  String head = String("<head>") + style + title + String("</head>");
+  String body = String("<body>")
+                + paragraph + lineBreak
+                + paragraph + lineBreak
+                + String("<h4>HTTP server works!</h4>") + paragraph
+                + String("This is a super simple website, running on an ESP8266 based micro controller :)") + paragraph
+                + String("You can see real time temperature and humidy and also you can control a relay.") + paragraph
+                + paragraph + lineBreak
+                + paragraph + lineBreak
+                + String("Or call any <b>endpoint</b> via browser or an app:") + paragraph + lineBreak
+                + endpoints + paragraph + lineBreak
+                + paragraph + lineBreak
+                + paragraph + lineBreak
+                + String("<i>Just for debugging purposes, here is <b>status of all lights:</b>") + paragraph + lineBreak
+                + String("</i></body>");
+  String rootContent = String("<html>") + autoRefresh + head + body + String("</html>");
+
+  server.send(httpRequestCode, "text/html", rootContent);
+}
+
+void handleDisplay() {
+  logEndpointMessage(" / display");
+
+  int httpRequestCode = 200; // OK
+  String responseMessage = "";
+
+  String displayText = "";
+
+  logMessage("Arguments:");
+  for (int i = 0; i < server.args(); i = i + 1) {
+    String argumentName = String(server.argName(i));
+    String argumentValue = String(server.arg(i));
+
+    if (argumentName == "text") {
+      displayText = argumentValue;
+      logMessage("");
+      String logText = String("the text ") + argumentValue;
+      responseMessage =  String("it works!!! text was recognized, here it is: ") + argumentValue;
+      logMessage(logText);
+      delay(500);
+    } else {
+      logAddMessage(String(i) + " : ");  //print id
+      logAddMessage("\"" + argumentName + "\" ");  //print name
+      logAddMessage("\"" + argumentValue + "\" ");  //print value
+      responseMessage =  String("nothing recognized");
+    }
+  }
+
+  server.send(httpRequestCode, "text/plain", responseMessage);
+}
+
+
+void handleNotFound() {
+  logEndpointMessage("404 - " + server.uri());
+
+  int httpRequestCode = 404; // ERROR
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  server.send(httpRequestCode, "text/plain", message);
+}
+
+
+
+void sendHttpRequest(String command) {
+  if ((wiFiMulti.run() == WL_CONNECTED)) {
+
+    WiFiClient client;
+
+    HTTPClient http;
+    String url = String("http://192.168.2.149/") + command;
+
+    logAddMessage("[HTTP] begin...\n");
+    if (http.begin(client, url)) {  // HTTP
+
+      logAddMessage("[HTTP] GET...\n");
+      // start connection and send HTTP header
+      int httpCode = http.GET();
+
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          String payload = http.getString();
+          Serial.println(payload);
+          logMessage("request ok");
+        }
+      } else {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+        logMessage("request is fu**ed");
+      }
+
+      http.end();
+    } else {
+      Serial.printf("[HTTP} Unable to connect\n");
+      logMessage("unable to connect");
+    }
+  }
+}
+
+void sendWeatherRequest() {
+  if ((wiFiMulti.run() == WL_CONNECTED)) {
+
+    WiFiClient client;
+
+    HTTPClient http;
+    String url = String("api.openweathermap.org/data/2.5/weather?q=Prague&appid=a85e96fef27c2d27f958043f67a4034c");
+
+    logAddMessage("[HTTP] begin...\n");
+    if (http.begin(client, url)) {  // HTTP
+
+      logAddMessage("[HTTP] GET...\n");
+      // start connection and send HTTP header
+      int httpCode = http.GET();
+
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          String payload = http.getString();
+          Serial.println(payload);
+          logMessage("request ok");
+        }
+      } else {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+        logMessage("request is fu**ed");
+      }
+
+      http.end();
+    } else {
+      Serial.printf("[HTTP} Unable to connect\n");
+      logMessage("unable to connect");
+    }
+  }
+}
+
+
+/*
+
+   Physical button control
+
+*/
+
+
+int checkButton() {
+  int event = 0;
+  buttonVal = digitalRead(PIN_BUTTON);
+  // Button pressed down
+  if (buttonVal == LOW && buttonLast == HIGH && (millis() - upTime) > debounce)
+  {
+    downTime = millis();
+    ignoreUp = false;
+    waitForUp = false;
+    singleOK = true;
+    holdEventPast = false;
+    longHoldEventPast = false;
+    if ((millis() - upTime) < DCgap && DConUp == false && DCwaiting == true)  DConUp = true;
+    else  DConUp = false;
+    DCwaiting = false;
+  }
+  // Button released
+  else if (buttonVal == HIGH && buttonLast == LOW && (millis() - downTime) > debounce)
+  {
+    if (not ignoreUp)
+    {
+      upTime = millis();
+      if (DConUp == false) DCwaiting = true;
+      else
+      {
+        event = 2;
+        DConUp = false;
+        DCwaiting = false;
+        singleOK = false;
+      }
+    }
+  }
+  // Test for normal click event: DCgap expired
+  if ( buttonVal == HIGH && (millis() - upTime) >= DCgap && DCwaiting == true && DConUp == false && singleOK == true && event != 2)
+  {
+    event = 1;
+    DCwaiting = false;
+  }
+  // Test for hold
+  if (buttonVal == LOW && (millis() - downTime) >= holdTime) {
+    // Trigger "normal" hold
+    if (not holdEventPast)
+    {
+      event = 3;
+      waitForUp = true;
+      ignoreUp = true;
+      DConUp = false;
+      DCwaiting = false;
+      //downTime = millis();
+      holdEventPast = true;
+    }
+    // Trigger "long" hold
+    if ((millis() - downTime) >= longHoldTime)
+    {
+      if (not longHoldEventPast)
+      {
+        event = 4;
+        longHoldEventPast = true;
+      }
+    }
+  }
+  buttonLast = buttonVal;
+  return event;
+}
+
+
+void clickEvent() {
+  showOnDisplay(String("button click: "));
+  sendHttpRequest(String("button?number=1"));
+}
+
+
+void doubleClickEvent() {
+  addToDisplay(String("button double click: "));
+  sendHttpRequest(String("button?number=2"));
+}
+
+
+void holdEvent() {
+  showOnDisplay("button hold");
+  sendHttpRequest(String("light?number=1&isOn=true"));
+}
+
+
+void longHoldEvent() {
+  showOnDisplay("button long hold");
+  sendWeatherRequest();
+}
+
+
+/*
+
+   Other functions
+
+*/
+
+
+void showOnDisplay(String message) {
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.println(message);
+  display.display();
+}
+
+
+void addToDisplay(String message) {
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.print(message);
+  display.display();
+}
+
+
+void logEndpointMessage(String enpointName) {
+  Serial.println("---------------------------");
+  logMessage(getClientIp() + " is calling " + enpointName);
+}
+
+
+String getClientIp() {
+  return server.client().remoteIP().toString();
+}
+
+
+String textToAhref(String text) {
+  String endpointText = ip2Str(WiFi.localIP()) + text;
+  String ahref = String("<a href=\"") + text + String("\">") + endpointText + String("</a>");
+  return ahref;
+}
+
+
+String textToButton(String text, String url) {
+  String endpointText = ip2Str(WiFi.localIP()) + url;
+  String ahref = String("<a href=\"") + url + String("\"><button>   ") + text  + String("   </button></a> ");
+  return ahref;
+}
+
+void logMessage(String text) {
+  Serial.println(text);
+  if (displayReady) {
+    showOnDisplay(text);
+  }
+}
+
+void logAddMessage(String text) {
+  Serial.print(text);
+  if (displayReady) {
+    addToDisplay(text);
+  }
+}
+
+
+String ip2Str(IPAddress ip) {
+  String s = "";
+  for (int i = 0; i < 4; i++) {
+    s += i  ? "." + String(ip[i]) : String(ip[i]);
+  }
+  return s;
 }
