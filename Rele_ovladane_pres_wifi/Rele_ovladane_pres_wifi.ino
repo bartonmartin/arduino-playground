@@ -5,21 +5,24 @@
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 #include <WEMOS_SHT3X.h>
+
+
+#define PROGRAM_NAME "3_RELAYS_BUTTON_OTA"
 
 
 // definition of used pins
 #define PIN_RELAY_1         D8
 #define PIN_RELAY_2         D7
 #define PIN_RELAY_3         D6
-#define PIN_LED             D2
 #define PIN_BUTTON          D3
 
 
 // definition of ID for each relay
-#define ID_RELAY_1          1
-#define ID_RELAY_2          2
-#define ID_RELAY_3          3
+#define RELAY_COUNT          3
 
 
 // wifi network stuff
@@ -38,9 +41,8 @@ SHT3X sht30(0x45);
 
 // relays
 int relayIndex = 0;                                                   // index is used to select correct ID and PIN from arrays
-boolean relayOnArray[] = {false};                       // used to store relays state ON/OFF
-int relayIdArray[] = {ID_RELAY_1};         // used to store relays ID
-int relayPinArray[] = {PIN_RELAY_1};        // used to store relays PIN
+boolean relayOnArray[RELAY_COUNT] = {false, false, false};                       // used to store relays state ON/OFF
+int relayPinArray[RELAY_COUNT] = {PIN_RELAY_1, PIN_RELAY_2, PIN_RELAY_3};      // used to store relays PIN
 
 
 // Button timing variables
@@ -48,6 +50,7 @@ int debounce = 20;                  // ms debounce period to prevent flickering 
 int DCgap = 150;                    // max ms between clicks for a double click event
 int holdTime = 1000;                // ms hold period: how long to wait for press+hold event
 int longHoldTime = 3000;            // ms long hold period: how long to wait for press+hold event
+
 
 // Button variables
 boolean buttonVal = HIGH;           // value read from button
@@ -64,6 +67,7 @@ boolean longHoldEventPast = false;  // whether or not the long hold event happen
 
 
 
+
 /*
 
    Main program
@@ -71,19 +75,89 @@ boolean longHoldEventPast = false;  // whether or not the long hold event happen
 */
 
 
-void setup(void) {
+void setup() {
   // serial monitor setup
   Serial.begin(115200);
 
   // pins setup
-  for (int i = 0; i < sizeof(relayPinArray); i++) {
+  for (int i = 0; i < RELAY_COUNT; i++) {
     pinMode(relayPinArray[i], OUTPUT);
   }
   pinMode(PIN_BUTTON, INPUT);
 
   // setting all rellays to default state == OFF
   switchAllRelays();
+  setupHttpServer();
+  setupArduinoOta();
+}
 
+
+void loop() {
+  ArduinoOTA.handle();
+  server.handleClient();
+
+  // Get button event and act accordingly
+  int b = checkButton();
+  if (b == 1) clickEvent();
+  if (b == 2) doubleClickEvent();
+  if (b == 3) holdEvent();
+  if (b == 4) longHoldEvent();
+}
+
+
+void setupArduinoOta() {
+  // Port defaults to 8266
+  // ArduinoOTA.setPort(8266);
+
+  // Hostname defaults to esp8266-[ChipID]
+  ArduinoOTA.setHostname(PROGRAM_NAME);
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+
+void setupHttpServer() {
   // wifi settings
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -106,23 +180,13 @@ void setup(void) {
   server.on("/switchOff", handleTurnOff);
   server.on("/switchOn", handleTurnOn);
   server.on("/light", handleRelay);
+  server.on("/button", handleButtonWeb);
   server.on("/rgb", handleRgb);
   server.onNotFound(handleNotFound);
 
   // starting http server
   server.begin();
   Serial.println("HTTP server started");
-}
-
-
-void loop(void) {
-  server.handleClient();
-  // Get button event and act accordingly
-  int b = checkButton();
-  if (b == 1) clickEvent();
-  if (b == 2) doubleClickEvent();
-  if (b == 3) holdEvent();
-  if (b == 4) longHoldEvent();
 }
 
 
@@ -199,22 +263,18 @@ int checkButton() {
 }
 
 
-void handleButton() {
-  // load new value for this loop
-  logEndpointMessage((String("button pressed: ") + relayIndex));
-  switchRelay(relayPinArray[relayIndex], relayIdArray[relayIndex]);
-}
-
-
 void clickEvent() {
+  if (relayIndex >= RELAY_COUNT) {
+    relayIndex = 0;
+  }
   logEndpointMessage((String("button click: ") + relayIndex));
-  handleButton();
+  switchRelay();
 }
 
 
 void doubleClickEvent() {
   relayIndex++;
-  if (relayIndex >= sizeof(relayIdArray)) {
+  if (relayIndex >= RELAY_COUNT) {
     relayIndex = 0;
   }
   logEndpointMessage((String("button double click: ") + relayIndex));
@@ -248,8 +308,8 @@ void handleRoot() {
   String lineBreak = String("<br>");
   String buttons = textToButton("Root", "/");
 
-  for (int i = 0; i < sizeof(relayOnArray); i++) {
-    buttons += textToButton(relayIdArray[i], relayOnArray[i]);
+  for (int i = 0; i < RELAY_COUNT; i++) {
+    buttons += textToButton(i);
   }
 
   if (sht30.get() == 0) {
@@ -269,9 +329,9 @@ void handleRoot() {
                      + textToAhref("/light?number=1&isOn=true") + paragraph
                      + String("<i>Try <b>alpha feature: </b></i>") + textToAhref("/rgb?r=1&g=0&b=0") + paragraph;
 
-  String relaysState = relayState(ID_RELAY_1, boolToString(!relayOnArray[0])) + paragraph
-                       + relayState(ID_RELAY_2, boolToString(relayOnArray[1])) + paragraph
-                       + relayState(ID_RELAY_3, boolToString(relayOnArray[2])) + paragraph;
+  String relaysState = relayState(1, boolToString(!relayOnArray[0])) + paragraph
+                       + relayState(2, boolToString(relayOnArray[1])) + paragraph
+                       + relayState(3, boolToString(relayOnArray[2])) + paragraph;
 
   String autoRefresh = String("<meta http-equiv=\"refresh\" content=\"5\">"); //refresh every 5 seconds
 
@@ -424,7 +484,7 @@ void handleRelay() {
   int httpRequestCode = 200; // OK
   int relayNumber = 0;
 
-  boolean isrelayOnArray = false;
+  boolean isRelayOn = false;
 
   for (int i = 0; i < server.args(); i = i + 1) {
     String argumentName = String(server.argName(i));
@@ -437,29 +497,60 @@ void handleRelay() {
       relayNumber = server.arg(i).toInt();
     }
     if (argumentName == "isOn") {
-      isrelayOnArray = server.arg(i) == "true";
+      isRelayOn = server.arg(i) == "true";
     }
   }
 
   switch (relayNumber) {
-    case ID_RELAY_1:
-      relayOnArray[0] = isrelayOnArray;
-      digitalWrite(PIN_RELAY_1, isrelayOnArray);
+    case 1:
+      relayOnArray[0] = isRelayOn;
+      digitalWrite(relayPinArray[0], relayOnArray[0]);
       break;
-    case ID_RELAY_2:
-      relayOnArray[1] = isrelayOnArray;
-      digitalWrite(PIN_RELAY_2, isrelayOnArray);
+    case 2:
+      relayOnArray[1] = isRelayOn;
+      digitalWrite(relayPinArray[1], relayOnArray[1]);
       break;
-    case ID_RELAY_3:
-      relayOnArray[2] = isrelayOnArray;
-      digitalWrite(PIN_RELAY_3, isrelayOnArray);
+    case 3:
+      relayOnArray[2] = isRelayOn;
+      digitalWrite(relayPinArray[2], relayOnArray[2]);
       break;
   }
 
-  String status = isrelayOnArray ? " is ON" : " is OFF";
+  String status = isRelayOn ? " is ON" : " is OFF";
   String message =  "light number: " + String(relayNumber) + status;
   //server.send(httpRequestCode, "text/plain", message);
   handleRoot();
+}
+
+
+void handleButtonWeb() {
+  logEndpointMessage(" / button");
+
+  int httpRequestCode = 200; // OK
+
+  int buttonNumber = -1;
+
+  for (int i = 0; i < server.args(); i = i + 1) {
+    String argumentName = String(server.argName(i));
+    String argumentValue = String(server.arg(i));
+    Serial.print(String(i) + " ");  //print id
+    Serial.print("\"" + argumentName + "\" ");  //print name
+    Serial.println("\"" + argumentValue + "\"");  //print value
+
+    if (argumentName == "number") {
+      buttonNumber = server.arg(i).toInt();
+    }
+  }
+
+  if (buttonNumber == -1) {
+    server.send(httpRequestCode, "text/plain", "fail");
+  } else {
+    if (buttonNumber == 1) clickEvent();
+    if (buttonNumber == 2) doubleClickEvent();
+    if (buttonNumber == 3) holdEvent();
+    if (buttonNumber == 4) longHoldEvent();
+    server.send(httpRequestCode, "text/plain", "OK");
+  }
 }
 
 
@@ -489,11 +580,12 @@ void handleNotFound() {
 */
 
 
-void switchRelay(int outputPin, int relayId) {
-  boolean relayOn = false;
+void switchRelay() {
+  boolean relayOn = relayOnArray[relayIndex];
+  int relayId = relayIndex + 1;
+  int relayPin = relayPinArray[relayIndex];
 
-  // tlacitko zmenilo svuj stav ;
-  if (digitalRead(outputPin) == HIGH) {
+  if (relayOn) {
     relayOn = false;
     Serial.println(String("switch OFF light ") + relayId);
   } else {
@@ -501,20 +593,9 @@ void switchRelay(int outputPin, int relayId) {
     Serial.println(String("switch ON light ") + relayId);
   }
 
-  switch (outputPin) {
-    case PIN_RELAY_1:
-      relayOnArray[0] = relayOn;
-      break;
-    case PIN_RELAY_2:
-      relayOnArray[1] = relayOn;
-      break;
-    case PIN_RELAY_3:
-      relayOnArray[2] = relayOn;
-      break;
-  }
-
-  // zapis hodnotu do rele
-  digitalWrite(outputPin , relayOn ? HIGH : LOW);
+  // write new relay value
+  relayOnArray[relayIndex] = relayOn;
+  digitalWrite(relayPin , relayOn ? HIGH : LOW);
 }
 
 
@@ -558,16 +639,21 @@ String textToAhref(String text) {
 }
 
 
-String textToButton(int relayId, boolean isrelayOnArray) {
+String textToButton(int relayArrayIndex) {
   String text = "";
   String url = "";
-  if (relayId == ID_RELAY_1) {
-    url = String("/light?number=") + relayId + String("&isOn=") + boolToStringValue(!isrelayOnArray);
-    text = String("Light ") + relayId + String(" <br>Switch ") + boolToString(isrelayOnArray);
+
+  boolean isRelayOn = relayOnArray[relayArrayIndex];
+  int relayId = relayArrayIndex + 1;
+
+  if (relayArrayIndex == 0) {
+    url = String("/light?number=") + relayId + String("&isOn=") + boolToStringValue(!isRelayOn);
+    text = String("Light ") + relayId + String(" <br>Switch ") + boolToString(isRelayOn);
   } else {
-    url = String("/light?number=") + relayId + String("&isOn=") + boolToStringValue(!isrelayOnArray);
-    text = String("Light ") + relayId + String(" <br>Switch ") + boolToString(!isrelayOnArray);
+    url = String("/light?number=") + relayId + String("&isOn=") + boolToStringValue(!isRelayOn);
+    text = String("Light ") + relayId + String(" <br>Switch ") + boolToString(!isRelayOn);
   }
+
   return textToButton(text, url);
 }
 
