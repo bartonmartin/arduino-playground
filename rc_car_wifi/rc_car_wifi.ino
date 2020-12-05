@@ -11,6 +11,8 @@
 
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
+#define HTTP_REQUEST_OK     200
+#define HTTP_REQUEST_PNF    404
 
 //192.168.2.xxx port 80
 ESP8266WebServer server(80);
@@ -203,8 +205,6 @@ void handleRoot() {
   Serial.println("");
   Serial.println("someone is calling root");
 
-  int httpRequestCode = 200; // OK
-
   String paragraph = String("<p>");
   String lineBreak = String("<br>");
 
@@ -216,7 +216,7 @@ void handleRoot() {
                            + String("Left ") + stepLenghtLeft
                            + String(" Right ") + stepLenghtRight
                            + paragraph
-                           + String("donut is 2175")
+                           + String("(donut is around 2175)")
                            + paragraph;
 
   String buttons = lineBreak
@@ -232,7 +232,6 @@ void handleRoot() {
                      + textToAhref("/stepLenght?f=500&b=500&l=100&r=100&speed=100") + paragraph;
 
   String style = String("<style>body {background-color: black;color: white;}</style>");
-
 
   String title = String("<title>ESP32 RC Car</title>");
   String head = String("<head>") + style + title + String("</head>");
@@ -250,14 +249,13 @@ void handleRoot() {
                 + String("</i></body>");
   String rootContent = String("<html>") + head + body + String("</html>");
 
-  server.send(httpRequestCode, "text/html", rootContent);
+  server.send(HTTP_REQUEST_OK, "text/html", rootContent);
 }
 
 
 void handleNotFound() {
   logEndpointMessage("404 - " + server.uri());
 
-  int httpRequestCode = 404; // ERROR
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += server.uri();
@@ -269,7 +267,7 @@ void handleNotFound() {
   for (uint8_t i = 0; i < server.args(); i++) {
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
-  server.send(httpRequestCode, "text/plain", message);
+  server.send(HTTP_REQUEST_PNF, "text/plain", message);
 }
 
 
