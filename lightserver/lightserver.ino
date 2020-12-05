@@ -11,7 +11,7 @@
 #include <WEMOS_SHT3X.h>
 
 
-#define PROGRAM_NAME "3_RELAYS_BUTTON_OTA"
+#define PROGRAM_NAME "lightserver"
 
 
 // definition of used pins
@@ -28,11 +28,16 @@
 // wifi network stuff
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
+#define HTTP_REQUEST_OK     200
+#define HTTP_REQUEST_PNF    404
+#define HTTP_REQUEST_FAIL   500
 
 
 // 192.168.2.xxx port 80
 ESP8266WebServer server(80);
 ESP8266WiFiMulti wiFiMulti;
+// WiFi connect timeout per AP. Increase when connecting takes longer.
+const uint32_t connectTimeoutMs = 5000;
 
 
 // I2C Interface digital temperature and humidity sensor
@@ -79,20 +84,16 @@ void setup() {
   // serial monitor setup
   Serial.begin(115200);
 
-  // pins setup
-  for (int i = 0; i < RELAY_COUNT; i++) {
-    pinMode(relayPinArray[i], OUTPUT);
-  }
-  pinMode(PIN_BUTTON, INPUT);
-
-  // setting all rellays to default state == OFF
-  switchAllRelays();
+  setupPins();
+  setupWifiConnection();
+  //  setupMdns();
   setupHttpServer();
   setupArduinoOta();
 }
 
 
 void loop() {
+  //  MDNS.update();
   ArduinoOTA.handle();
   server.handleClient();
 
@@ -102,6 +103,81 @@ void loop() {
   if (b == 2) doubleClickEvent();
   if (b == 3) holdEvent();
   if (b == 4) longHoldEvent();
+}
+
+
+/*
+
+   Setup functions
+
+*/
+
+
+void setupPins() {
+  // pin mode setup
+  for (int i = 0; i < RELAY_COUNT; i++) {
+    pinMode(relayPinArray[i], OUTPUT);
+  }
+  pinMode(PIN_BUTTON, INPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  // setting all rellays to default state == OFF
+  switchAllRelays();
+}
+
+
+void setupWifiConnection() {
+  // Set WiFi to station mode
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  // wifi settings
+  wiFiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
+  Serial.println("");
+
+  int retryCount = 0;
+  // waiting for connection
+  while (wiFiMulti.run() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    retryCount++;
+    if (retryCount == 15) {
+      ESP.restart();
+    }
+  }
+
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(WIFI_SSID);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+
+void setupMdns() {
+  // Start the mDNS responder
+  // this enables user to type "lightserver.local" into browser insted of IP
+  if (!MDNS.begin(PROGRAM_NAME)) {
+    Serial.println("Error setting up MDNS responder!");
+  }
+  Serial.println("mDNS responder started");
+}
+
+
+void setupHttpServer() {
+  // definition of all endpoints
+  server.on("/", handleRoot);
+  server.on("/switchOff", handleTurnOff);
+  server.on("/switchOn", handleTurnOn);
+  server.on("/light", handleRelay);
+  server.on("/button", handleButtonWeb);
+  server.on("/status", handleStatus);
+  server.on("/rgb", handleRgb);
+  server.onNotFound(handleNotFound);
+
+  // starting http server
+  server.begin();
+  Serial.println("HTTP server started");
 }
 
 
@@ -128,65 +204,54 @@ void setupArduinoOta() {
     }
 
     // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
+    Serial.println("Arduino OTA - Start updating " + type);
   });
+
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    Serial.println("\nArduino OTA - End");
   });
+
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    int progresPercent = progress / (total / 100);
+
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(50);
+    digitalWrite(LED_BUILTIN, HIGH);
+
+    Serial.printf("Arduino OTA - Progress: %u%%\r", progresPercent);
   });
+
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
+    digitalWrite(LED_BUILTIN, LOW);
+
+    Serial.printf("Arduino OTA - Error[%u]: ", error);
+
     if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
+      Serial.println("Arduino OTA - Auth Failed");
     } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
+      Serial.println("Arduino OTA - Begin Failed");
     } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
+      Serial.println("Arduino OTA - Connect Failed");
     } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
+      Serial.println("Arduino OTA - Receive Failed");
     } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
+      Serial.println("Arduino OTA - End Failed");
     }
+
+    ESP.restart();
   });
+
   ArduinoOTA.begin();
-  Serial.println("Ready");
+  Serial.println("Arduino OTA - Ready");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
-}
-
-
-void setupHttpServer() {
-  // wifi settings
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  wiFiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
-  Serial.println("");
-
-  // waiting for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(WIFI_SSID);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  // definition of all endpoints
-  server.on("/", handleRoot);
-  server.on("/switchOff", handleTurnOff);
-  server.on("/switchOn", handleTurnOn);
-  server.on("/light", handleRelay);
-  server.on("/button", handleButtonWeb);
-  server.on("/rgb", handleRgb);
-  server.onNotFound(handleNotFound);
-
-  // starting http server
-  server.begin();
-  Serial.println("HTTP server started");
 }
 
 
@@ -200,28 +265,29 @@ void setupHttpServer() {
 int checkButton() {
   int event = 0;
   buttonVal = digitalRead(PIN_BUTTON);
+
   // Button pressed down
-  if (buttonVal == LOW && buttonLast == HIGH && (millis() - upTime) > debounce)
-  {
+  if (buttonVal == LOW && buttonLast == HIGH && (millis() - upTime) > debounce) {
     downTime = millis();
     ignoreUp = false;
     waitForUp = false;
     singleOK = true;
     holdEventPast = false;
     longHoldEventPast = false;
-    if ((millis() - upTime) < DCgap && DConUp == false && DCwaiting == true)  DConUp = true;
-    else  DConUp = false;
+    if ((millis() - upTime) < DCgap && DConUp == false && DCwaiting == true) {
+      DConUp = true;
+    } else {
+      DConUp = false;
+    }
     DCwaiting = false;
   }
+
   // Button released
-  else if (buttonVal == HIGH && buttonLast == LOW && (millis() - downTime) > debounce)
-  {
-    if (not ignoreUp)
-    {
+  else if (buttonVal == HIGH && buttonLast == LOW && (millis() - downTime) > debounce) {
+    if (not ignoreUp) {
       upTime = millis();
       if (DConUp == false) DCwaiting = true;
-      else
-      {
+      else {
         event = 2;
         DConUp = false;
         DCwaiting = false;
@@ -229,17 +295,17 @@ int checkButton() {
       }
     }
   }
+
   // Test for normal click event: DCgap expired
-  if ( buttonVal == HIGH && (millis() - upTime) >= DCgap && DCwaiting == true && DConUp == false && singleOK == true && event != 2)
-  {
+  if ( buttonVal == HIGH && (millis() - upTime) >= DCgap && DCwaiting == true && DConUp == false && singleOK == true && event != 2)  {
     event = 1;
     DCwaiting = false;
   }
+
   // Test for hold
   if (buttonVal == LOW && (millis() - downTime) >= holdTime) {
     // Trigger "normal" hold
-    if (not holdEventPast)
-    {
+    if (not holdEventPast) {
       event = 3;
       waitForUp = true;
       ignoreUp = true;
@@ -249,15 +315,14 @@ int checkButton() {
       holdEventPast = true;
     }
     // Trigger "long" hold
-    if ((millis() - downTime) >= longHoldTime)
-    {
-      if (not longHoldEventPast)
-      {
+    if ((millis() - downTime) >= longHoldTime)  {
+      if (not longHoldEventPast)  {
         event = 4;
         longHoldEventPast = true;
       }
     }
   }
+
   buttonLast = buttonVal;
   return event;
 }
@@ -302,8 +367,6 @@ void handleRoot() {
   Serial.println("");
   logEndpointMessage(" / root");
 
-  int httpRequestCode = 200; // OK
-
   String paragraph = String("<p>");
   String lineBreak = String("<br>");
   String buttons = textToButton("Root", "/");
@@ -321,17 +384,18 @@ void handleRoot() {
     Serial.println("Error sht30 value!");
   }
 
-  String temperature = String("Temperature in Celsius : ") + sht30.cTemp + String(" Celsius (+- 1 Celsius)");
-  String pressure = String("Relative humidity : ") + sht30.humidity + String(" % (+- 5%)");
+  String celsiusTemp = String("Temperature in Celsius : ") + sht30.cTemp + String(" Celsius (+- 1 Celsius)");
+  String relHumidity = String("Relative humidity : ") + sht30.humidity + String(" % (+- 5%)");
+
+  String htmlStatus  = getStatus();
+  htmlStatus.replace(String("\n"), paragraph);
 
   String endpoints = textToAhref("/switchOn") + paragraph
                      + textToAhref("/switchOff") + paragraph
                      + textToAhref("/light?number=1&isOn=true") + paragraph
-                     + String("<i>Try <b>alpha feature: </b></i>") + textToAhref("/rgb?r=1&g=0&b=0") + paragraph;
-
-  String relaysState = relayState(1, boolToString(!relayOnArray[0])) + paragraph
-                       + relayState(2, boolToString(relayOnArray[1])) + paragraph
-                       + relayState(3, boolToString(relayOnArray[2])) + paragraph;
+                     + textToAhref("/button?number=1") + paragraph
+                     + textToAhref("/status") + paragraph
+                     + String("<i>Try <b>alpha feature: </b></i>") + textToAhref("/rgb?r=1&g=0&b=0");
 
   String autoRefresh = String("<meta http-equiv=\"refresh\" content=\"5\">"); //refresh every 5 seconds
 
@@ -340,74 +404,32 @@ void handleRoot() {
   String head = String("<head>") + style + title + String("</head>");
   String body = String("<body>")
                 + paragraph + lineBreak
-                + paragraph + lineBreak
                 + String("<h4>Tap button to switch light</h4>") + lineBreak
                 + buttons + lineBreak
                 + paragraph + lineBreak
-                + temperature + lineBreak
-                + pressure + lineBreak
-                + paragraph + lineBreak
+                + celsiusTemp + lineBreak
+                + relHumidity + lineBreak
                 + paragraph + lineBreak
                 + String("<h4>HTTP server works!</h4>") + paragraph
                 + String("This is a super simple website, running on an ESP8266 based micro controller :)") + paragraph
                 + String("You can see real time temperature and humidy and also you can control a relay.") + paragraph
                 + paragraph + lineBreak
+                + String("Or call any <b>endpoint</b> via browser or an app:")
                 + paragraph + lineBreak
-                + String("Or call any <b>endpoint</b> via browser or an app:") + paragraph + lineBreak
-                + endpoints + paragraph + lineBreak
+                + endpoints
                 + paragraph + lineBreak
-                + paragraph + lineBreak
-                + String("<i>Just for debugging purposes, here is <b>status of all lights:</b>") + paragraph + lineBreak
-                + relaysState + paragraph + lineBreak
+                + String("<i>Just for debugging purposes, here is current <b>status:</b>") + paragraph + lineBreak
+                + htmlStatus + paragraph + lineBreak
                 + String("</i></body>");
   String rootContent = String("<html>") + autoRefresh + head + body + String("</html>");
 
-  server.send(httpRequestCode, "text/html", rootContent);
-}
-
-
-void sendHttpRequest(int r, int g, int b) {
-  if ((wiFiMulti.run() == WL_CONNECTED)) {
-
-    WiFiClient client;
-
-    HTTPClient http;
-    String url = String("http://192.168.2.243/rgb?r=") + r + String("&g=") + g + String("&b=") + b;
-
-    Serial.print("[HTTP] begin...\n");
-    if (http.begin(client, url)) {  // HTTP
-
-      Serial.print("[HTTP] GET...\n");
-      // start connection and send HTTP header
-      int httpCode = http.GET();
-
-      // httpCode will be negative on error
-      if (httpCode > 0) {
-        // HTTP header has been send and Server response header has been handled
-        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
-
-        // file found at server
-        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-          String payload = http.getString();
-          Serial.println(payload);
-        }
-      } else {
-        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-      }
-
-      http.end();
-    } else {
-      Serial.printf("[HTTP} Unable to connect\n");
-    }
-  }
+  server.send(HTTP_REQUEST_OK, "text/html", rootContent);
 }
 
 
 void handleRgb() {
   Serial.println("");
   logEndpointMessage(" / rgb");
-
-  int httpRequestCode = 200; // OK
 
   int r = 0;
   int g = 0;
@@ -432,7 +454,7 @@ void handleRgb() {
     }
   }
 
-  sendHttpRequest(r, g, b);
+  int requestResponseCode = sendHttpRequest(r, g, b);
 
   String paragraph = String("<p>");
   String lineBreak = String("<br>");
@@ -448,19 +470,19 @@ void handleRgb() {
                 + String("</body>");
   String rgbContent = String("<html>") + head + body + String("</html>");
 
-  server.send(httpRequestCode, "text/html", rgbContent);
+  server.send(requestResponseCode, "text/html", rgbContent);
 }
 
 
 void handleTurnOn() {
   logEndpointMessage(" / switchOn");
 
-  int httpRequestCode = 200; // OK
-  relayOnArray[0] = HIGH;
+  relayOnArray[0] = LOW;
   relayOnArray[1] = HIGH;
   relayOnArray[2] = HIGH;
   switchAllRelays();
-  //server.send(httpRequestCode, "text / plain", "prave si aktivoval vsechny rele pres wifi pomoci prohlizece !!!!");
+
+  //server.send(HTTP_REQUEST_OK, "text / plain", "prave si aktivoval vsechny rele pres wifi pomoci prohlizece !!!!");
   handleRoot();
 }
 
@@ -468,12 +490,12 @@ void handleTurnOn() {
 void handleTurnOff() {
   logEndpointMessage(" / switchOff");
 
-  int httpRequestCode = 200; // OK
-  relayOnArray[0] = LOW;
+  relayOnArray[0] = HIGH;
   relayOnArray[1] = LOW;
   relayOnArray[2] = LOW;
   switchAllRelays();
-  //server.send(httpRequestCode, "text / plain", "prave si deaktivoval vsechny rele pres wifi pomoci prohlizece");
+
+  //server.send(HTTP_REQUEST_OK, "text / plain", "prave si deaktivoval vsechny rele pres wifi pomoci prohlizece");
   handleRoot();
 }
 
@@ -481,9 +503,7 @@ void handleTurnOff() {
 void handleRelay() {
   logEndpointMessage(" / light");
 
-  int httpRequestCode = 200; // OK
   int relayNumber = 0;
-
   boolean isRelayOn = false;
 
   for (int i = 0; i < server.args(); i = i + 1) {
@@ -518,15 +538,14 @@ void handleRelay() {
 
   String status = isRelayOn ? " is ON" : " is OFF";
   String message =  "light number: " + String(relayNumber) + status;
-  //server.send(httpRequestCode, "text/plain", message);
+
+  //server.send(HTTP_REQUEST_OK, "text/plain", message);
   handleRoot();
 }
 
 
 void handleButtonWeb() {
   logEndpointMessage(" / button");
-
-  int httpRequestCode = 200; // OK
 
   int buttonNumber = -1;
 
@@ -543,22 +562,38 @@ void handleButtonWeb() {
   }
 
   if (buttonNumber == -1) {
-    server.send(httpRequestCode, "text/plain", "fail");
+    server.send(HTTP_REQUEST_FAIL, "text/plain", "fail");
   } else {
     if (buttonNumber == 1) clickEvent();
     if (buttonNumber == 2) doubleClickEvent();
     if (buttonNumber == 3) holdEvent();
     if (buttonNumber == 4) longHoldEvent();
-    server.send(httpRequestCode, "text/plain", "OK");
+    server.send(HTTP_REQUEST_OK, "text/plain", "OK");
   }
+}
+
+void handleStatus() {
+  logEndpointMessage(" / status");
+
+  if (sht30.get() == 0) {
+    logEndpointMessage("Reading temp and humidity");
+    Serial.println("Get temp!");
+  }
+  else
+  {
+    Serial.println("Error sht30 value!");
+  }
+
+  String statusResponse  = getStatus();
+
+  server.send(HTTP_REQUEST_OK, "text/plain", statusResponse);
 }
 
 
 void handleNotFound() {
   logEndpointMessage("404 - " + server.uri());
 
-  int httpRequestCode = 404; // ERROR
-  String message = "File Not Found\n\n";
+  String message = "Page Not Found\n\n";
   message += "URI: ";
   message += server.uri();
   message += "\nMethod: ";
@@ -569,7 +604,7 @@ void handleNotFound() {
   for (uint8_t i = 0; i < server.args(); i++) {
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
-  server.send(httpRequestCode, "text/plain", message);
+  server.send(HTTP_REQUEST_PNF, "text/plain", message);
 }
 
 
@@ -596,6 +631,53 @@ void switchRelay() {
   // write new relay value
   relayOnArray[relayIndex] = relayOn;
   digitalWrite(relayPin , relayOn ? HIGH : LOW);
+}
+
+
+int sendHttpRequest(int r, int g, int b) {
+  if ((wiFiMulti.run() == WL_CONNECTED)) {
+    WiFiClient client;
+    HTTPClient http;
+
+    String url = String("http://192.168.2.255/rgb?r=") + r + String("&g=") + g + String("&b=") + b;
+
+    Serial.print("[HTTP] begin...\n");
+    if (http.begin(client, url)) {  // HTTP
+
+      Serial.print("[HTTP] GET...\n");
+      // start connection and send HTTP header
+      int httpCode = http.GET();
+
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          String payload = http.getString();
+          Serial.println(payload);
+          return HTTP_REQUEST_OK;
+        }
+      } else {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+        return HTTP_REQUEST_FAIL;
+      }
+
+      http.end();
+    } else {
+      Serial.printf("[HTTP} Unable to connect\n");
+      return HTTP_REQUEST_FAIL;
+    }
+  }
+}
+
+String getStatus() {
+  return relayState(1, boolToString(!relayOnArray[0])) + "\n"
+         + relayState(2, boolToString(relayOnArray[1])) + "\n"
+         + relayState(3, boolToString(relayOnArray[2])) + "\n"
+         + String("Temperature in Celsius : ") + sht30.cTemp + String(" Celsius (+- 1 Celsius)") + "\n"
+         + String("Relative humidity : ") + sht30.humidity + String(" % (+- 5%)");
 }
 
 
