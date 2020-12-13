@@ -1,4 +1,9 @@
-#include <ESP8266WebServer.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 #define PIN_1             D1
 #define PIN_2             D2
@@ -8,14 +13,46 @@
 #define PIN_6             D6
 #define PIN_7             D7
 #define PIN_8             D8
+#define PIN_LIGHT         32
 
 #define WIFI_SSID           "IoT"
 #define WIFI_PASSWORD       "qSUpFC3XyLSLabgQ"
 #define HTTP_REQUEST_OK     200
 #define HTTP_REQUEST_PNF    404
 
+#define NUMFLAKES 10
+#define XPOS 0
+#define YPOS 1
+#define DELTAY 2
+
+
+#define LOGO16_GLCD_HEIGHT 16
+#define LOGO16_GLCD_WIDTH  16
+
+// SCL GPIO5
+// SDA GPIO4
+#define I2C_SDA 27
+#define I2C_SCL 25
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+#define OLED_RESET 0  // GPIO0
+
+#define NUMFLAKES 10
+#define XPOS 0
+#define YPOS 1
+#define DELTAY 2
+
+
+#define LOGO16_GLCD_HEIGHT 16
+#define LOGO16_GLCD_WIDTH  16
+
+
+TwoWire DISPLAY_I2C = TwoWire(0);
+Adafruit_SSD1306 display;
+boolean displayReady = false;
+
 //192.168.2.xxx port 80
-ESP8266WebServer server(80);
+WebServer server(80);
 
 int stepLenghtLeft = 100;
 int stepLenghtRight = 100;
@@ -23,6 +60,7 @@ int stepLenghtForward = 500;
 int stepLenghtBackward = 500;
 
 float speed = 100;
+boolean lightOn = false;
 
 
 void setup(void) {
@@ -49,6 +87,8 @@ void setup(void) {
   pinMode(PIN_6, OUTPUT);
   pinMode(PIN_7, OUTPUT);
   pinMode(PIN_8, OUTPUT);
+  pinMode(PIN_LIGHT, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
 
   digitalWrite(PIN_1, HIGH);
   digitalWrite(PIN_2, HIGH);
@@ -58,7 +98,10 @@ void setup(void) {
   digitalWrite(PIN_6, HIGH);
   digitalWrite(PIN_7, HIGH);
   digitalWrite(PIN_8, HIGH);
+  digitalWrite(LED_BUILTIN, LOW);
+  switchLight();
 
+  setupDisplay();
   setupHttpServer();
 }
 
@@ -66,6 +109,26 @@ void setup(void) {
 void loop(void) {
   server.handleClient();
 }
+
+
+void setupDisplay() {
+  DISPLAY_I2C.begin(I2C_SDA, I2C_SCL);
+  display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &DISPLAY_I2C, OLED_RESET);
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  // init done
+
+  display.display();
+  delay(1000);
+
+  // Clear the buffer.
+  display.clearDisplay();
+
+  displayReady = true;
+
+  logMessage("display ready");
+  delay(1000);
+}
+
 
 void setupHttpServer() {
   // set wifi mode
@@ -91,6 +154,7 @@ void setupHttpServer() {
   server.on("/backward", handleBackward);
   server.on("/right", handleRight);
   server.on("/left", handleLeft);
+  server.on("/light", handleLight);
   server.on("/stepLenght", handleSwitchOffDelay);
   server.onNotFound(handleNotFound);
 
@@ -100,12 +164,12 @@ void setupHttpServer() {
 }
 
 void handleForward() {
-  logEndpointMessage("/ forward");
+  logMessage("/ forward");
 
-  analogWrite(PIN_1, speed);
-  analogWrite(PIN_3, speed);
-  analogWrite(PIN_6, speed);
-  analogWrite(PIN_8, speed);
+  digitalWrite(PIN_1, LOW);
+  digitalWrite(PIN_3, LOW);
+  digitalWrite(PIN_6, LOW);
+  digitalWrite(PIN_8, LOW);
   delay(stepLenghtForward);
   digitalWrite(PIN_1, HIGH);
   digitalWrite(PIN_3, HIGH);
@@ -116,12 +180,12 @@ void handleForward() {
 }
 
 void handleBackward() {
-  logEndpointMessage("/ backward");
+  logMessage("/ backward");
 
-  analogWrite(PIN_2, speed);
-  analogWrite(PIN_4, speed);
-  analogWrite(PIN_5, speed);
-  analogWrite(PIN_7, speed);
+  digitalWrite(PIN_2, LOW);
+  digitalWrite(PIN_4, LOW);
+  digitalWrite(PIN_5, LOW);
+  digitalWrite(PIN_7, LOW);
   delay(stepLenghtBackward);
   digitalWrite(PIN_2, HIGH);
   digitalWrite(PIN_4, HIGH);
@@ -132,12 +196,12 @@ void handleBackward() {
 }
 
 void handleRight() {
-  logEndpointMessage("/ right");
+  logMessage("/ right");
 
-  analogWrite(PIN_2, speed);
-  analogWrite(PIN_3, speed);
-  analogWrite(PIN_5, speed);
-  analogWrite(PIN_8, speed);
+  digitalWrite(PIN_2, LOW);
+  digitalWrite(PIN_3, LOW);
+  digitalWrite(PIN_5, LOW);
+  digitalWrite(PIN_8, LOW);
   delay(stepLenghtRight);
   digitalWrite(PIN_2, HIGH);
   digitalWrite(PIN_3, HIGH);
@@ -147,13 +211,14 @@ void handleRight() {
   handleRoot();
 }
 
-void handleLeft() {
-  logEndpointMessage("/ left");
 
-  analogWrite(PIN_1, speed);
-  analogWrite(PIN_4, speed);
-  analogWrite(PIN_6, speed);
-  analogWrite(PIN_7, speed);
+void handleLeft() {
+  logMessage("/ left");
+
+  digitalWrite(PIN_1, LOW);
+  digitalWrite(PIN_4, LOW);
+  digitalWrite(PIN_6, LOW);
+  digitalWrite(PIN_7, LOW);
   delay(stepLenghtLeft);
   digitalWrite(PIN_1, HIGH);
   digitalWrite(PIN_4, HIGH);
@@ -164,8 +229,16 @@ void handleLeft() {
 }
 
 
+void handleLight() {
+  logMessage("/ light");
+  lightOn = !lightOn;
+  switchLight();
+  handleRoot();
+}
+
+
 void handleSwitchOffDelay() {
-  logEndpointMessage("/ stepLenght");
+  logMessage("/ stepLenght");
 
   for (int i = 0; i < server.args(); i = i + 1) {
     String argumentName = String(server.argName(i));
@@ -223,6 +296,8 @@ void handleRoot() {
                    + getButton("forward") + getButton("backward")
                    + lineBreak
                    + getButton("left") + getButton("right")
+                   + lineBreak
+                   + getButton("light") + boolToString(lightOn)
                    + lineBreak;
 
   String endpoints = textToAhref("/forward") + paragraph
@@ -237,12 +312,13 @@ void handleRoot() {
   String head = String("<head>") + style + title + String("</head>");
   String body = String("<body>")
                 + String("<h1>Car over WiFi!</h1>") + paragraph + lineBreak
-                + stepLenghtText + paragraph + lineBreak
+                + stepLenghtText + paragraph
+                + lineBreak
+                + buttons + paragraph
+                + lineBreak
                 + String("This is a super simple website, running on an ESP8266 based micro controller :)</p>") + paragraph
                 + String("You can control four motors mounted to RC car model. Each pin is mapped to backward/forwards fuction!</p>") + paragraph
                 + lineBreak
-                + String("<h3>Tap on buttons right here:</h3>") + paragraph + lineBreak
-                + buttons + paragraph + lineBreak
                 + String("Or you call any <b>endpoint</b> via browser or an app:") + paragraph + lineBreak
                 + endpoints + paragraph + lineBreak
                 + paragraph + lineBreak
@@ -254,7 +330,7 @@ void handleRoot() {
 
 
 void handleNotFound() {
-  logEndpointMessage("404 - " + server.uri());
+  logMessage("404 - " + server.uri());
 
   String message = "File Not Found\n\n";
   message += "URI: ";
@@ -271,6 +347,33 @@ void handleNotFound() {
 }
 
 
+void switchLight() {
+  if (lightOn) {
+    digitalWrite(PIN_LIGHT, HIGH);
+  } else {
+    digitalWrite(PIN_LIGHT, LOW);
+  }
+}
+
+
+void showOnDisplay(String message) {
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.println(message);
+  display.display();
+}
+
+
+void addToDisplay(String message) {
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.print(message);
+  display.display();
+}
+
+
 String getButton(String function) {
   return textToButton(function, getUrl(function));
 }
@@ -282,9 +385,11 @@ String getUrl(String function) {
 }
 
 
-void logEndpointMessage(String enpointName) {
-  Serial.println("---------------------------");
-  Serial.println(getClientIp() + " vola " + enpointName);
+void logMessage(String text) {
+  Serial.println(text);
+  if (displayReady) {
+    showOnDisplay(text);
+  }
 }
 
 
@@ -305,6 +410,12 @@ String textToButton(String text, String url) {
   Serial.println(String("Endpoint: ") + endpointText);
   return ahref;
 }
+
+
+String boolToString(bool b) {
+  return b ? "ON" : "OFF";
+}
+
 
 String ip2Str(IPAddress ip) {
   String s = "";
