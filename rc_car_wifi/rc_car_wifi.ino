@@ -46,6 +46,112 @@
 #define LOGO16_GLCD_HEIGHT 16
 #define LOGO16_GLCD_WIDTH  16
 
+const char HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html>
+    <head>
+        <title>ESP Pushbutton Web Server</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+            body {
+                font-family: Arial;
+                text-align: center;
+                margin: 0px auto;
+                padding-top: 30px;
+                background-color: black;
+                color: white;
+            }
+            .button {
+                padding: 10px 20px;
+                font-size: 24px;
+                text-align: center;
+                outline: none;
+                margin: 1px;
+                color: #fff;
+                background-color: #2f4468;
+                border: none;
+                border-radius: 5px;
+                box-shadow: 0 6px #999;
+                cursor: pointer;
+                -webkit-touch-callout: none;
+                -webkit-user-select: none;
+                -khtml-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+                -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+            }
+            .button:hover {
+                background-color: #1f2e45;
+            }
+            .button:active {
+                background-color: #1f2e45;
+                box-shadow: 0 4px #666;
+                transform: translateY(2px);
+            }
+            .stream {
+                -webkit-user-select: none;
+                margin: auto;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Arduino RC Car MK2</h1>
+        <h3>
+            ESP32 + HTML + CSS + Javascripct + 4 Motors
+        </h3>
+        <img class="stream" src="http:/\/192.168.2.186:81/stream" />
+        <p>
+            <button class="button" onmousedown="forward();" ontouchstart="forward();">
+                Forward
+            </button>
+            <button class="button" onmousedown="backward();" ontouchstart="backward();">
+                Backward
+            </button>
+        </p>
+        <p>
+            <button class="button" onmousedown="left();" ontouchstart="left();">
+                Left
+            </button>
+            <button class="button" onmousedown="right();" ontouchstart="right();">
+                Right
+            </button>
+        </p>
+        <p>
+            <button class="button" onmousedown="light();" ontouchstart="light();">
+                Light
+            </button>
+        </p>
+
+        <script>
+            function forward() {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", "/forward");
+                xhr.send();
+            }
+            function backward() {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", "/backward");
+                xhr.send();
+            }
+            function left() {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", "/left");
+                xhr.send();
+            }
+            function right() {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", "/right");
+                xhr.send();
+            }
+            function light() {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", "/light");
+                xhr.send();
+            }
+        </script>
+    </body>
+</html>)rawliteral";
+
 
 TwoWire DISPLAY_I2C = TwoWire(0);
 Adafruit_SSD1306 display;
@@ -61,6 +167,19 @@ int stepLenghtBackward = 500;
 
 float speed = 100;
 boolean lightOn = false;
+boolean showRootLog = true;
+
+// setting PWM properties
+const int freq = 100;
+const int ledChannel1 = 0;
+const int ledChannel2 = 1;
+const int ledChannel3 = 2;
+const int ledChannel4 = 3;
+const int ledChannel5 = 4;
+const int ledChannel6 = 5;
+const int ledChannel7 = 6;
+const int ledChannel8 = 7;
+const int resolution = 8;
 
 
 void setup(void) {
@@ -71,10 +190,10 @@ void setup(void) {
   // value HIGH == motor is off
   // PIN_1 LOW - front right forward
   // PIN_2 LOW - front right backward
-  // PIN_3 LOW - front left forward
-  // PIN_4 LOW - front left backward
-  // PIN_5 LOW - rear right backward
-  // PIN_6 LOW - rear right forward
+  // PIN_3 LOW - front left backward
+  // PIN_4 LOW - front left forward
+  // PIN_5 LOW - rear right forward
+  // PIN_6 LOW - rear right backward
   // PIN_7 LOW - rear left backward
   // PIN_8 LOW - rear left forward
 
@@ -89,6 +208,23 @@ void setup(void) {
   pinMode(PIN_8, OUTPUT);
   pinMode(PIN_LIGHT, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
+
+  ledcSetup(ledChannel1, freq, resolution);
+  ledcSetup(ledChannel2, freq, resolution);
+  ledcSetup(ledChannel3, freq, resolution);
+  ledcSetup(ledChannel4, freq, resolution);
+  ledcSetup(ledChannel5, freq, resolution);
+  ledcSetup(ledChannel6, freq, resolution);
+  ledcSetup(ledChannel7, freq, resolution);
+  ledcSetup(ledChannel8, freq, resolution);
+  ledcAttachPin(PIN_1, ledChannel1);
+  ledcAttachPin(PIN_2, ledChannel2);
+  ledcAttachPin(PIN_3, ledChannel3);
+  ledcAttachPin(PIN_4, ledChannel4);
+  ledcAttachPin(PIN_5, ledChannel5);
+  ledcAttachPin(PIN_6, ledChannel6);
+  ledcAttachPin(PIN_7, ledChannel7);
+  ledcAttachPin(PIN_8, ledChannel8);
 
   digitalWrite(PIN_1, HIGH);
   digitalWrite(PIN_2, HIGH);
@@ -135,18 +271,17 @@ void setupHttpServer() {
   WiFi.mode(WIFI_STA);
   // join wifi network
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.println("");
+  logAddMessageLine("wifi begin");
 
   // waiting for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
+    logAddMessage(".");
   }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(WIFI_SSID);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+
+  logMessage("Connected to: " + String(WIFI_SSID));
+  logAddMessageLine("IP address: ");
+  logAddMessageLine(ip2Str(WiFi.localIP()));
 
   // define all available http endpoints
   server.on("/", handleRoot);
@@ -160,92 +295,89 @@ void setupHttpServer() {
 
   // start server
   server.begin();
-  Serial.println("HTTP server started");
+  logAddMessageLine("HTTP server started");
 }
 
 void handleForward() {
-  logMessage("/ forward");
+  logEndpointMessage("/ forward");
+  server.send(HTTP_REQUEST_OK);
 
-  digitalWrite(PIN_1, LOW);
-  digitalWrite(PIN_3, LOW);
-  digitalWrite(PIN_6, LOW);
-  digitalWrite(PIN_8, LOW);
-  delay(stepLenghtForward);
-  digitalWrite(PIN_1, HIGH);
-  digitalWrite(PIN_3, HIGH);
-  digitalWrite(PIN_6, HIGH);
-  digitalWrite(PIN_8, HIGH);
-
-  handleRoot();
+  ledcWrite(ledChannel2, speed);
+  ledcWrite(ledChannel3, speed);
+  ledcWrite(ledChannel6, speed);
+  ledcWrite(ledChannel7, speed);
+  delay(stepLenghtBackward);
+  ledcWrite(ledChannel2, 0);
+  ledcWrite(ledChannel3, 0);
+  ledcWrite(ledChannel6, 0);
+  ledcWrite(ledChannel7, 0);
 }
 
 void handleBackward() {
-  logMessage("/ backward");
+  logEndpointMessage("/ backward");
+  server.send(HTTP_REQUEST_OK);
 
-  digitalWrite(PIN_2, LOW);
-  digitalWrite(PIN_4, LOW);
-  digitalWrite(PIN_5, LOW);
-  digitalWrite(PIN_7, LOW);
-  delay(stepLenghtBackward);
-  digitalWrite(PIN_2, HIGH);
-  digitalWrite(PIN_4, HIGH);
-  digitalWrite(PIN_5, HIGH);
-  digitalWrite(PIN_7, HIGH);
-
-  handleRoot();
+  ledcWrite(ledChannel1, speed);
+  ledcWrite(ledChannel4, speed);
+  ledcWrite(ledChannel5, speed);
+  ledcWrite(ledChannel8, speed);
+  delay(stepLenghtForward);
+  ledcWrite(ledChannel1, 0);
+  ledcWrite(ledChannel4, 0);
+  ledcWrite(ledChannel5, 0);
+  ledcWrite(ledChannel8, 0);
 }
 
 void handleRight() {
-  logMessage("/ right");
+  logEndpointMessage("/ right");
+  server.send(HTTP_REQUEST_OK);
 
-  digitalWrite(PIN_2, LOW);
-  digitalWrite(PIN_3, LOW);
-  digitalWrite(PIN_5, LOW);
-  digitalWrite(PIN_8, LOW);
-  delay(stepLenghtRight);
-  digitalWrite(PIN_2, HIGH);
-  digitalWrite(PIN_3, HIGH);
-  digitalWrite(PIN_5, HIGH);
-  digitalWrite(PIN_8, HIGH);
-
-  handleRoot();
+  ledcWrite(ledChannel1, speed);
+  ledcWrite(ledChannel3, speed);
+  ledcWrite(ledChannel5, speed);
+  ledcWrite(ledChannel7, speed);
+  delay(stepLenghtLeft);
+  ledcWrite(ledChannel1, 0);
+  ledcWrite(ledChannel3, 0);
+  ledcWrite(ledChannel5, 0);
+  ledcWrite(ledChannel7, 0);
 }
 
 
 void handleLeft() {
-  logMessage("/ left");
+  logEndpointMessage("/ left");
+  server.send(HTTP_REQUEST_OK);
 
-  digitalWrite(PIN_1, LOW);
-  digitalWrite(PIN_4, LOW);
-  digitalWrite(PIN_6, LOW);
-  digitalWrite(PIN_7, LOW);
-  delay(stepLenghtLeft);
-  digitalWrite(PIN_1, HIGH);
-  digitalWrite(PIN_4, HIGH);
-  digitalWrite(PIN_6, HIGH);
-  digitalWrite(PIN_7, HIGH);
-
-  handleRoot();
+  ledcWrite(ledChannel2, speed);
+  ledcWrite(ledChannel4, speed);
+  ledcWrite(ledChannel6, speed);
+  ledcWrite(ledChannel8, speed);
+  delay(stepLenghtRight);
+  ledcWrite(ledChannel2, 0);
+  ledcWrite(ledChannel4, 0);
+  ledcWrite(ledChannel6, 0);
+  ledcWrite(ledChannel8, 0);
 }
 
 
 void handleLight() {
-  logMessage("/ light");
+  logEndpointMessage("/ light");
+  server.send(HTTP_REQUEST_OK);
+
   lightOn = !lightOn;
   switchLight();
-  handleRoot();
 }
 
 
 void handleSwitchOffDelay() {
-  logMessage("/ stepLenght");
+  logEndpointMessage("/ stepLenght");
 
   for (int i = 0; i < server.args(); i = i + 1) {
     String argumentName = String(server.argName(i));
     String argumentValue = String(server.arg(i));
-    Serial.print(String(i) + " ");  //print id
-    Serial.print("\"" + argumentName + "\" ");  //print name
-    Serial.println("\"" + argumentValue + "\"");  //print value
+    logAddMessage(String(i) + " ");  //print id
+    logAddMessage("\"" + argumentName + "\" ");  //print name
+    logMessage("\"" + argumentValue + "\"");  //print value
 
     if (argumentName == "f") {
       stepLenghtForward = server.arg(i).toInt();
@@ -270,13 +402,16 @@ void handleSwitchOffDelay() {
     }
   }
 
+  showRootLog = false;
   handleRoot();
+  showRootLog = true;
 }
 
 
 void handleRoot() {
-  Serial.println("");
-  Serial.println("someone is calling root");
+  if (showRootLog) {
+    logEndpointMessage("/ root");
+  }
 
   String paragraph = String("<p>");
   String lineBreak = String("<br>");
@@ -285,11 +420,13 @@ void handleRoot() {
                            + paragraph
                            + String("Forward ") + stepLenghtForward
                            + String(" Backward ") + stepLenghtBackward
-                           + paragraph
+                           + lineBreak
                            + String("Left ") + stepLenghtLeft
                            + String(" Right ") + stepLenghtRight
-                           + paragraph
+                           + lineBreak
                            + String("(donut is around 2175)")
+                           + lineBreak
+                           + String("Speed(0-255): ") + String(speed)
                            + paragraph;
 
   String buttons = lineBreak
@@ -323,14 +460,16 @@ void handleRoot() {
                 + endpoints + paragraph + lineBreak
                 + paragraph + lineBreak
                 + String("</i></body>");
+
   String rootContent = String("<html>") + head + body + String("</html>");
 
-  server.send(HTTP_REQUEST_OK, "text/html", rootContent);
+  server.send(HTTP_REQUEST_OK, "text/html", HTML);
 }
 
 
 void handleNotFound() {
   logMessage("404 - " + server.uri());
+  logAddMessage(String(millis()));
 
   String message = "File Not Found\n\n";
   message += "URI: ";
@@ -343,6 +482,7 @@ void handleNotFound() {
   for (uint8_t i = 0; i < server.args(); i++) {
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
+
   server.send(HTTP_REQUEST_PNF, "text/plain", message);
 }
 
@@ -354,6 +494,14 @@ void switchLight() {
     digitalWrite(PIN_LIGHT, LOW);
   }
 }
+
+
+
+/*
+
+   Other functions
+
+*/
 
 
 void showOnDisplay(String message) {
@@ -374,6 +522,23 @@ void addToDisplay(String message) {
 }
 
 
+void addLineToDisplay(String message) {
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.println(message);
+  display.display();
+}
+
+
+void logEndpointMessage(String enpointName) {
+  Serial.println("---------------------------");
+  logMessage(enpointName + "  called by");
+  logAddMessageLine(getClientIp());
+  logAddMessageLine(" ");
+  logAddMessageLine("RC IP: " + ip2Str(WiFi.localIP()));
+}
+
+
 String getButton(String function) {
   return textToButton(function, getUrl(function));
 }
@@ -385,11 +550,8 @@ String getUrl(String function) {
 }
 
 
-void logMessage(String text) {
-  Serial.println(text);
-  if (displayReady) {
-    showOnDisplay(text);
-  }
+String boolToString(bool b) {
+  return b ? "ON" : "OFF";
 }
 
 
@@ -399,21 +561,40 @@ String getClientIp() {
 
 
 String textToAhref(String text) {
-  String ahref = String("<a href=\"") + text + String("\">") + ip2Str(WiFi.localIP()) + text + String("</a>");
-  Serial.println(ahref);
+  String endpointText = ip2Str(WiFi.localIP()) + text;
+  String ahref = String("<a href=\"") + text + String("\">") + endpointText + String("</a>");
   return ahref;
 }
+
 
 String textToButton(String text, String url) {
   String endpointText = ip2Str(WiFi.localIP()) + url;
   String ahref = String("<a href=\"") + url + String("\"><button>   ") + text  + String("   </button></a> ");
-  Serial.println(String("Endpoint: ") + endpointText);
   return ahref;
 }
 
 
-String boolToString(bool b) {
-  return b ? "ON" : "OFF";
+void logMessage(String text) {
+  Serial.println(text);
+  if (displayReady) {
+    showOnDisplay(text);
+  }
+}
+
+
+void logAddMessage(String text) {
+  Serial.print(text);
+  if (displayReady) {
+    addToDisplay(text);
+  }
+}
+
+
+void logAddMessageLine(String text) {
+  Serial.println(text);
+  if (displayReady) {
+    addLineToDisplay(text);
+  }
 }
 
 
