@@ -89,6 +89,8 @@ void setup() {
   //  setupMdns();
   setupHttpServer();
   setupArduinoOta();
+  
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 
 
@@ -170,6 +172,7 @@ void setupHttpServer() {
   server.on("/switchOff", handleTurnOff);
   server.on("/switchOn", handleTurnOn);
   server.on("/light", handleRelay);
+  server.on("/lightInternal", handleRelayInternal);
   server.on("/button", handleButtonWeb);
   server.on("/status", handleStatus);
   server.on("/rgb", handleRgb);
@@ -482,8 +485,7 @@ void handleTurnOn() {
   relayOnArray[2] = HIGH;
   switchAllRelays();
 
-  //server.send(HTTP_REQUEST_OK, "text / plain", "prave si aktivoval vsechny rele pres wifi pomoci prohlizece !!!!");
-  handleRoot();
+  server.send(HTTP_REQUEST_OK, "text / plain", "prave si aktivoval vsechny rele pres wifi pomoci prohlizece !!!!");
 }
 
 
@@ -495,8 +497,7 @@ void handleTurnOff() {
   relayOnArray[2] = LOW;
   switchAllRelays();
 
-  //server.send(HTTP_REQUEST_OK, "text / plain", "prave si deaktivoval vsechny rele pres wifi pomoci prohlizece");
-  handleRoot();
+  server.send(HTTP_REQUEST_OK, "text / plain", "prave si deaktivoval vsechny rele pres wifi pomoci prohlizece");
 }
 
 
@@ -539,7 +540,49 @@ void handleRelay() {
   String status = isRelayOn ? " is ON" : " is OFF";
   String message =  "light number: " + String(relayNumber) + status;
 
-  //server.send(HTTP_REQUEST_OK, "text/plain", message);
+  server.send(HTTP_REQUEST_OK, "text/plain", message);
+}
+
+
+void handleRelayInternal() {
+  logEndpointMessage(" / lightInternal");
+
+  int relayNumber = 0;
+  boolean isRelayOn = false;
+
+  for (int i = 0; i < server.args(); i = i + 1) {
+    String argumentName = String(server.argName(i));
+    String argumentValue = String(server.arg(i));
+    Serial.print(String(i) + " ");  //print id
+    Serial.print("\"" + argumentName + "\" ");  //print name
+    Serial.println("\"" + argumentValue + "\"");  //print value
+
+    if (argumentName == "number") {
+      relayNumber = server.arg(i).toInt();
+    }
+    if (argumentName == "isOn") {
+      isRelayOn = server.arg(i) == "true";
+    }
+  }
+
+  switch (relayNumber) {
+    case 1:
+      relayOnArray[0] = isRelayOn;
+      digitalWrite(relayPinArray[0], relayOnArray[0]);
+      break;
+    case 2:
+      relayOnArray[1] = isRelayOn;
+      digitalWrite(relayPinArray[1], relayOnArray[1]);
+      break;
+    case 3:
+      relayOnArray[2] = isRelayOn;
+      digitalWrite(relayPinArray[2], relayOnArray[2]);
+      break;
+  }
+
+  String status = isRelayOn ? " is ON" : " is OFF";
+  String message =  "light number: " + String(relayNumber) + status;
+
   handleRoot();
 }
 
@@ -729,10 +772,10 @@ String textToButton(int relayArrayIndex) {
   int relayId = relayArrayIndex + 1;
 
   if (relayArrayIndex == 0) {
-    url = String("/light?number=") + relayId + String("&isOn=") + boolToStringValue(!isRelayOn);
+    url = String("/lightInternal?number=") + relayId + String("&isOn=") + boolToStringValue(!isRelayOn);
     text = String("Light ") + relayId + String(" <br>Switch ") + boolToString(isRelayOn);
   } else {
-    url = String("/light?number=") + relayId + String("&isOn=") + boolToStringValue(!isRelayOn);
+    url = String("/lightInternal?number=") + relayId + String("&isOn=") + boolToStringValue(!isRelayOn);
     text = String("Light ") + relayId + String(" <br>Switch ") + boolToString(!isRelayOn);
   }
 
