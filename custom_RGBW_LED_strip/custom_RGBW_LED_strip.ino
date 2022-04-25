@@ -66,15 +66,15 @@ void setup(void) {
   server.on("/turnOn", handleTurnOn);
   server.on("/rgb", handleRgb);
   server.on("/random", handleRandom);
-  server.on("/white", handleWhite);
   server.on("/blinker", handleBlinker);
+  server.on("/flash", handleFlash);
   server.onNotFound(handleNotFound);
 
   // start the http server
   server.begin();
   Serial.println("HTTP server started");
 
-  // start RGB LED 
+  // start RGB LED
   pixels.begin();
 
   // run initial test
@@ -201,11 +201,16 @@ void handleRoot() {
                    + getButton(String("G"), String("+")) + String(" ")
                    + getButton(String("G"), String("-")) + paragraph
                    + getButton(String("B"), String("+")) + String(" ")
-                   + getButton(String("B"), String("-")) + paragraph;
+                   + getButton(String("B"), String("-")) + paragraph
+                   + getButton(String("W"), String("+")) + String(" ")
+                   + getButton(String("W"), String("-")) + paragraph;
 
-  String endpoints = textToAhref("/zapni") + paragraph
-                     + textToAhref("/vypni") + paragraph
-                     + textToAhref("/rgb?r=1&g=0&b=0") + paragraph;
+  String endpoints = textToAhref("/turnOn") + paragraph
+                     + textToAhref("/turnOff") + paragraph
+                     + textToAhref("/random") + paragraph
+                     + textToAhref("/blinker") + paragraph
+                     + textToAhref("/flash") + paragraph
+                     + textToAhref("/rgb?r=1&g=0&b=0&w=0&leds=37") + paragraph;
 
   String style = String("<style>body {background-color: black;color: white;}</style>");
 
@@ -216,11 +221,12 @@ void handleRoot() {
   String body = String("<body>")
                 + String("<h1>") + String("RGB \(") + r  + String(",") + g + String(",") + b + String("\)") + String(" POWER</h1>") + paragraph
                 + lineBreak
-                + rgbTextStyle + String("This is a super simple website, running on an ESP8266 based micro controller :)</p>") + paragraph
-                + rgbTextStyle + String("You can change color of WS2812B LED strip with 60 diodes !</p>") + paragraph
+                + String("This is a super simple website, running on an ESP8266 based micro controller :)") + paragraph
+                + String("You can change color of WS2812B LED strip with 37 diodes !") + paragraph
+                + String("You an change brightness of 2835 4000k 12B LED strip with PWM dimming using FDP6030BL MOSFET!") + paragraph
                 + lineBreak
                 + String("<h3>Tap on buttons right here:</h3>") + paragraph + lineBreak
-                + String("<p>LED strip length: ") + leds + String("</p>")
+                + rgbTextStyle + String("LED strip length: ") + leds + String("</p>")
                 + buttons + paragraph + lineBreak
                 + String("Or you call any <b>endpoint</b> via browser or an app:") + paragraph + lineBreak
                 + endpoints + paragraph + lineBreak
@@ -233,9 +239,7 @@ void handleRoot() {
 
 
 String rgbValue(int value) {
-  if (value != 0 && value < 100) {
-    return String("") + (value + 100);
-  }
+  return String("") + value * 2;
 }
 
 
@@ -248,8 +252,10 @@ void handleTurnOn() {
   r = 5;
   g = 5;
   b = 5;
+  white = 5;
 
   setStripColor(r, g, b, 10);
+  analogWrite(led, white);
   handleRoot();
 }
 
@@ -263,45 +269,11 @@ void handleTurnOff() {
   r = 0;
   g = 0;
   b = 0;
+  white = 0;
 
   setStripColor(r, g, b, 10);
+  digitalWrite(led, LOW);
   handleRoot();
-}
-
-void handleWhite() {
-  logEndpointMessage("/white");
-
-  int httpRequestCode = 200; // OK
-
-  for (int i = 0; i < server.args(); i = i + 1) {
-    String argumentName = String(server.argName(i));
-    String argumentValue = String(server.arg(i));
-    Serial.print(String(i) + " ");  //print id
-    Serial.print("\"" + argumentName + "\" ");  //print name
-    Serial.println("\"" + argumentValue + "\"");  //print value
-
-    if (argumentName == "white") {
-      white = server.arg(i).toInt();
-    }
-  }
-
-  Serial.println(String("White:") + white);
-  if (white == 0) {
-    digitalWrite(led, LOW);
-  } else {
-
-    if (white > 255) {
-      white = 255;
-    }
-
-    if (white == 255) {
-      digitalWrite(led, HIGH);
-    } else {
-      analogWrite(led, white);
-    }
-  }
-
-  server.send(200, "text/html", "ok");
 }
 
 
@@ -329,11 +301,32 @@ void handleRgb() {
       b = checkValue(server.arg(i).toInt());
     }
 
+    if (argumentName == "w") {
+      white = checkValue(server.arg(i).toInt());
+    }
+
     if (argumentName == "leds") {
       leds = checkValue(server.arg(i).toInt());
       pixels.updateLength(leds);
     }
   }
+
+  Serial.println(String("White:") + white);
+  if (white == 0) {
+    digitalWrite(led, LOW);
+  } else {
+
+    if (white > 255) {
+      white = 255;
+    }
+
+    if (white == 255) {
+      digitalWrite(led, HIGH);
+    } else {
+      analogWrite(led, white);
+    }
+  }
+
 
   for (int i = 0; i < leds; i++) {
     pixels.setPixelColor(i, pixels.Color(r, g, b));
@@ -341,12 +334,14 @@ void handleRgb() {
     delay(10);
   }
 
-  //server.send(httpRequestCode, "text/plain", "prave si aktivoval RGB LED pres wifi pomoci prohlizece !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
   handleRoot();
 }
 
-void handleRandom(){
-   for (int i = 0; i < leds; i++) {
+void handleRandom() {
+  logEndpointMessage("/random");
+
+  server.send(200, "text/plain", "ok");
+  for (int i = 0; i < leds; i++) {
     pixels.setPixelColor(i, pixels.Color(random(0, 20), random(0, 20), random(0, 20)));
     pixels.show();
     delay(10);
@@ -357,13 +352,26 @@ void handleRandom(){
 void handleBlinker() {
   logEndpointMessage("/blinker");
 
+  int httpRequestCode = 200; // OK
+  server.send(httpRequestCode, "text/plain", "ok");
+
   setStripColor(9, 2, 0, 50);
   delay(400);
 
   setStripColor(0, 0, 0, 1);
   delay(400);
+}
 
-  handleRoot();
+
+void handleFlash() {
+  logEndpointMessage("/flash");
+
+  int httpRequestCode = 200; // OK
+  server.send(httpRequestCode, "text/plain", "ok");
+
+  digitalWrite(led, HIGH);
+  delay(100);
+  digitalWrite(led, white);
 }
 
 
