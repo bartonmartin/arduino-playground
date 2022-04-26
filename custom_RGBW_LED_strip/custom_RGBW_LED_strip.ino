@@ -65,6 +65,7 @@ void setup(void) {
   server.on("/turnOff", handleTurnOff);
   server.on("/turnOn", handleTurnOn);
   server.on("/rgb", handleRgb);
+  server.on("/rgbSimple", handleRgbSimple);
   server.on("/random", handleRandom);
   server.on("/blinker", handleBlinker);
   server.on("/flash", handleFlash);
@@ -276,11 +277,22 @@ void handleTurnOff() {
   handleRoot();
 }
 
-
 void handleRgb() {
+  handleColorChange(true);
+}
+
+void handleRgbSimple() {
+  handleColorChange(false);
+}
+
+
+void handleColorChange(boolean showRoot) {
   logEndpointMessage("/rgb");
 
-  int httpRequestCode = 200; // OK
+  if (!showRoot) {
+    int httpRequestCode = 200; // OK
+    server.send(200, "text/plain", "ok");
+  }
 
   for (int i = 0; i < server.args(); i = i + 1) {
     String argumentName = String(server.argName(i));
@@ -302,11 +314,11 @@ void handleRgb() {
     }
 
     if (argumentName == "w") {
-      white = checkValue(server.arg(i).toInt());
+      white = server.arg(i).toInt();
     }
 
     if (argumentName == "leds") {
-      leds = checkValue(server.arg(i).toInt());
+      leds = server.arg(i).toInt();
       pixels.updateLength(leds);
     }
   }
@@ -334,7 +346,9 @@ void handleRgb() {
     delay(10);
   }
 
-  handleRoot();
+  if (showRoot) {
+    handleRoot();
+  }
 }
 
 void handleRandom() {
