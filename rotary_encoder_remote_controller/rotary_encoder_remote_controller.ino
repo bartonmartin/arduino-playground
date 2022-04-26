@@ -56,10 +56,7 @@ HTTPClient http;
 
 // time related sutff
 unsigned long lastMeasureTime = 0;
-unsigned long lastDataSendTime = 0;
 int dataReadInterval = 5;
-int dataSendInterval = 250;
-
 
 
 // RGBW channgels and index pointing at the channel
@@ -158,13 +155,45 @@ void loop() {
 
     if (currentCLK != previousCLK) {
       if (dataValue != currentCLK) {
-        channelValueList[channelIndex]++;
+
+        int stepSize = 5;
+        if (channelIndex == 3) {
+          stepSize = 25;
+        } else {
+          stepSize = 5;
+        }
+
+        int value = channelValueList[channelIndex];
+
+        if (value <= stepSize) {
+          channelValueList[channelIndex] += (stepSize / 5);
+        } else {
+          channelValueList[channelIndex] += stepSize;
+        }
+
+
         if (channelValueList[channelIndex] >= 255) {
           channelValueList[channelIndex] = 255;
         }
         encoderDirection = "clockwise";
       } else {
-        channelValueList[channelIndex]--;
+
+        int stepSize = 5;
+        if (channelIndex == 3) {
+          stepSize = 25;
+        } else {
+          stepSize = 5;
+        }
+
+        int value = channelValueList[channelIndex];
+
+        if (value <= stepSize) {
+          channelValueList[channelIndex] -= (stepSize / 5);
+        } else {
+          channelValueList[channelIndex] -= stepSize;
+        }
+
+
         if (channelValueList[channelIndex] <= 0) {
           channelValueList[channelIndex] = 0;
         }
@@ -194,10 +223,7 @@ void showText(unsigned long currentTime) {
   Serial.print(channelValueList[channelIndex]);
   Serial.println();
 
-  if ((currentTime - lastDataSendTime) >= dataSendInterval) {
     sendApiCall();
-    lastDataSendTime = currentTime;
-  }
 }
 
 
@@ -257,7 +283,7 @@ void sendApiCall() {
     Serial.println("sendApiCall");
 
     if (WiFi.status() == WL_CONNECTED) {
-      String serverPath = serverName + "/rgb?r=" + channelValueList[0] + "&g=" + channelValueList[1] + "&b=" + channelValueList[2] + "&w=" + channelValueList[3] ;
+      String serverPath = serverName + "/rgbSimple?r=" + channelValueList[0] + "&g=" + channelValueList[1] + "&b=" + channelValueList[2] + "&w=" + channelValueList[3] ;
       Serial.println("serverPath: " + serverPath);
 
       // Your Domain name with URL path or IP address with path
